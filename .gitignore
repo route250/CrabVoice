@@ -5,3 +5,7 @@
 /old
 /requirements.txt
 /testData
+*.log
+*.pyc
+*.log
+__pycache__/
