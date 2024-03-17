@@ -113,6 +113,32 @@ class RecognizerGoogle:
         return None,None
 
     @staticmethod
+    def get_recognizers_key():
+        VAR='RECOGNIZERS_GOOGLE_KEY'
+        key = os.environ.get(VAR)
+        if key is None:
+            key = ''
+            try:
+                import re
+                import inspect
+                import speech_recognition.recognizers.google
+                filepath=inspect.getfile(speech_recognition.recognizers.google)
+                pattern = r'^\s*key\s*=\s*"([^"]*)"'
+                with open( filepath, 'r', encoding='utf-8') as file:
+                    for line in file:
+                        match = re.match(pattern, line)
+                        if match:
+                            # 二重引用符で囲まれた内容を取り出し
+                            value = match.group(1)
+                            if isinstance(value,str) and len(value)>0:
+                                key = value
+                                break
+            except:
+                pass
+            os.environ[VAR] = key
+        return key
+
+    @staticmethod
     def _recognize_google( audio_data, key=None, language="en-US", pfilter=0, operation_timeout=None):
         """
         Performs speech recognition on ``audio_data`` (an ``AudioData`` instance), using the Google Speech Recognition API.
@@ -156,7 +182,7 @@ class RecognizerGoogle:
             convert_rate=None if audio_data.sample_rate >= 8000 else 8000,  # audio samples must be at least 8 kHz
             convert_width=2  # audio samples must be 16-bit
         )
-        if key is None: key = "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
+        if key is None: key = RecognizerGoogle.get_recognizers_key()
         url = "http://www.google.com/speech-api/v2/recognize?{}".format(urlencode({
             "client": "chromium",
             "lang": language,

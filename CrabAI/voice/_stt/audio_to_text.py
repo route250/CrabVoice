@@ -115,6 +115,12 @@ class AudioToText:
         finally:
             logger.info("exit audio to text")
 
+    def tick_time(self,time_sec):
+        pass
+
+    def set_pause(self,b):
+        pass
+
     def stop(self):
         try:
             logger.info("stop audio to text")
