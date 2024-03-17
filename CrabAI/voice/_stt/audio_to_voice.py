@@ -24,6 +24,7 @@ class AudioToVoice:
         self.use_vosk:int = 2
         self._thread:list[Thread] = [None] * self.use_vosk
         self.callback = callback
+        self._mute:bool = False # ミュートする
         self.audio_to_segment:AudioToSegment = AudioToSegment( callback=self._fn_callback, wave_dir=wave_dir )
         self.vosk: list[KaldiRecognizer] = [None] * len(self._thread)
         self.vosk_model: vosk.Model = None
@@ -73,6 +74,8 @@ class AudioToVoice:
 
     def _fn_callback(self, stt_data:SttData):
         with self._lock:
+            if self._mute:
+                return
             stt_data.seq = self.input_count
             self.input_count+=1
             self._queue.put( stt_data )
@@ -124,6 +127,8 @@ class AudioToVoice:
 
     def _PrioritizedCallback(self,stt_data:SttData,ignore:bool):
         with self._lock:
+            if self._mute:
+                return
             if self.output_count==stt_data.seq:
                 # 順番が一致していればそのままコール
                 if not ignore:
@@ -138,6 +143,21 @@ class AudioToVoice:
                 if not ignore:
                     self.callback(stt_data)
                 self.output_count=stt_data.seq+1
+
+    def set_pause(self,b):
+        try:
+            with self._lock:
+                before = self._mute
+                self._mute = bool(b)
+                if not before and b:
+                    self._queue = Queue()
+                    self.input_count:int = 0
+                    self.output_count:int = 0
+                    self.output_queue:list = []
+                    heapify(self.output_queue)
+            self.audio_to_segment.set_pause(b)
+        except:
+            pass
 
     def stop(self):
         try:

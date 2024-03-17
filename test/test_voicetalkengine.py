@@ -161,7 +161,7 @@ response_fmt = [
     }},
     { PromptFactory.K_PSEUDO_PERSONAL: {
         "values": [
-            { "thought": "会話から%USER%の感情や意見を記述。次に、%PERSONAL%の感情と意見(肯定、否定、同意)を記述。話題を明確にして次の会話を考える"},
+            { "thought": "%USER%の言葉は音声認識の精度不足のため意味不明なことがある。意味不明な場合はもう一度話してくれるように依頼する。会話内容から会話の主題、TPO、%USER%の意見・状況・感情を記述。次に、%PERSONAL%のprofileに基づいて、興味対象、疑問項目、スタンス(肯定、否定)を記述。話題を明確にして次の会話を考える。同じ話題が続いたら、関連する他の話題に切り替える。"},
             { PromptFactory.K_TALK: "%PERSONAL%の発言"},
         ]
     }},
@@ -227,12 +227,20 @@ def main():
             if last_talk_len>100 or last_talk_seg>=3:
                 messages.append( {'role':'system','content':'AIはもっと短い言葉で話して下さい'})
             last_talk_seg = 0
-            messages.append( {'role':'user','content':text})
-            request_messages = messages[-10:]
-            if 0.0<confs and confs<0.6:
-                request_messages.insert( len(request_messages)-2, {'role':'system','content':f'次のメッセージは、音声認識結果のconfidence={confs}'})
-            request_messages.insert(0, {'role':'system','content': "# 以下はここまでの会話履歴です。"})
+            request_messages = []
             request_messages.append( {'role':'system','content':pf.create_total_prompt()} )
+            if len(messages)>0:
+                request_messages.append( {'role':'system','content': "# 以下はここまでの会話履歴です。"})
+            for m in messages[-10:0]:
+                request_messages.append(m)
+
+            if 0.0<confs and confs<0.6:
+                request_messages.append( {'role':'system','content':f'次のメッセージは、音声認識結果のconfidence={confs}'})
+            else:
+                request_messages.append( {'role':'system','content':pf.replaces('# 次の%Userからの入力に対して、%PERSOLANのprofileに従って出力項目を出力して下さい。')})
+            request_messages.append( {'role':'user','content':text})
+            messages.append( {'role':'user','content':text})
+
             openai_timeout=15.0
             openai_max_retries=2
             try:

@@ -41,6 +41,13 @@ class RingBuffer:
     def to_index(self, pos ):
         return pos - self.offset
 
+    def add(self, value ):
+        try:
+            item:np.ndarray = np.array( [value] ).astype(self.dtype)
+            self.append( item )
+        except:
+            pass
+
     def append(self, item: np.ndarray):
         with self._lock:
             item_len = len(item)

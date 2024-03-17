@@ -119,7 +119,11 @@ class AudioToText:
         pass
 
     def set_pause(self,b):
-        pass
+        if self.m2a is not None:
+            self.m2a.set_pause(b)
+        if self.w2a is not None:
+            self.w2a.set_pause(b)
+        self.audio_to_voice.set_pause(b)
 
     def stop(self):
         try:

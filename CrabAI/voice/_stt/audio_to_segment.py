@@ -32,6 +32,7 @@ class AudioToSegment:
         self.max_silent_length:int = int( 0.8 * self.sample_rate )
         self.prefech_length:int = int( 1.6 * self.sample_rate )
         #
+        self._mute:bool = False
         self.callback = callback
         self.dict_list:list[dict] = []
         # frame
@@ -78,6 +79,9 @@ class AudioToSegment:
     def start(self):
         pass
 
+    def set_pause(self,b):
+        self._mute = b
+
     def stop(self):
         pass
 
@@ -122,6 +126,11 @@ class AudioToSegment:
             #
             self.seg_buffer.append(frame)
             self.hists.add( frame.max(), frame.min(), self.count1.sum, is_speech, energy, zc )
+
+            if self._mute:
+                self.rec=0
+                self.rec_start = 0
+                self.stt_data = None
 
             if self.rec>=2:
 
@@ -198,10 +207,10 @@ class AudioToSegment:
                 else:
                     self.rec = 0
                     # print(f"rec pulse {self.seg_buffer.get_pos()} {seg_len/self.sample_rate:.3f}")
-                    self.ignore_list.append(self.rec_start)
+                    self.ignore_list.add(self.rec_start)
                     self.rec_start = 0
             else:
-                if self.count1:
+                if self.count1 and not self._mute:
                     self.rec=1
                     self.rec_start = self.seg_buffer.get_pos()
                     # print(f"rec up {self.seg_buffer.get_pos()} {self.count1.sum}")

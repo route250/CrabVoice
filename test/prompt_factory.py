@@ -232,9 +232,18 @@ class PromptFactory:
     def random_topic():
         return random.choice(PromptFactory.topics_tbl)
 
-
-    def replace( text, key, value ) ->str:
+    def _replace( text, key, value ) ->str:
         return text.replace("{"+key+"}",value).replace("%"+key+"%",value)
+
+    def replaces(self, text ) ->str:
+        tm:float = time.time()
+        text = PromptFactory._replace(text,'datetime', PromptFactory.strftime(tm) )
+        text = PromptFactory._replace(text,'season', PromptFactory.get_season(tm) )
+        text = PromptFactory._replace(text,'randomtopic', PromptFactory.random_topic() )
+        text = PromptFactory._replace(text,'PERSONAL', PromptFactory.K_PSEUDO_PERSONAL )
+        text = PromptFactory._replace(text,'AI', PromptFactory.W_AI )
+        text = PromptFactory._replace(text,'USER', PromptFactory.W_USER )
+        return text
     
     def create_total_prompt( self ):
         text = ""
@@ -249,13 +258,7 @@ class PromptFactory:
         text += "# プロンプト"
         text += PromptFactory.create_format_description( self.prompt_dict )
         #変数置換
-        tm:float = time.time()
-        text = PromptFactory.replace(text,'datetime', PromptFactory.strftime(tm) )
-        text = PromptFactory.replace(text,'season', PromptFactory.get_season(tm) )
-        text = PromptFactory.replace(text,'randomtopic', PromptFactory.random_topic() )
-        text = PromptFactory.replace(text,'PERSONAL', PromptFactory.K_PSEUDO_PERSONAL )
-        text = PromptFactory.replace(text,'AI', PromptFactory.W_AI )
-        text = PromptFactory.replace(text,'USER', PromptFactory.W_USER )
+        text = self.replaces(text)
 
         return text
 

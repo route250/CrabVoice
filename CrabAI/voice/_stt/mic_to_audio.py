@@ -83,6 +83,9 @@ class mic_to_audio:
         except:
             pass
 
+    def set_pause(self,b):
+        pass
+
     def stop(self):
         self.__del__()
 

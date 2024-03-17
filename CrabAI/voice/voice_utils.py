@@ -64,12 +64,14 @@ def note_to_hz(note):
     return 440.0 * (2 ** ((octave - 4) + note_to_freq[name] / 12.0))
 
 # C4(ド) 261.63, D4(レ) 293.66  E4(ミ) 329.63 F4(ファ) 349.23 G4(ソ) 392.00 A4(ラ) 440.00 B4(シ) 493.88 C5(ド) 523.25
-def create_tone(Hz=440, time=0.3, sample_rate=16000, fade_in_time=0.05, fade_out_time=0.1):
+def create_tone(Hz=440, time=0.3, volume=0.3, sample_rate=16000, fade_in_time=0.05, fade_out_time=0.1):
     Hz = note_to_hz(Hz)
     data_len = int(sample_rate * time)
     if Hz > 0:
         # 正弦波を生成
         sound = np.sin(2 * np.pi * np.arange(data_len) * Hz / sample_rate).astype(np.float32)
+        # 音量
+        sound *= volume
         # フェードイン処理
         fade_in_len = int(sample_rate * fade_in_time)
         fade_in = np.linspace(0, 1, fade_in_len)  # 0から1まで線形に増加
@@ -84,7 +86,7 @@ def create_tone(Hz=440, time=0.3, sample_rate=16000, fade_in_time=0.05, fade_out
     
     return sound
 
-def create_sound(sequence):
+def create_sound(sequence, *, volume:float=0.3 ):
     """複数の（周波数、時間）タプルを受け取り、連続する音声データを生成する
 
     Args:
@@ -94,7 +96,7 @@ def create_sound(sequence):
         bytes: 生成された音声データのバイナリ（WAV形式）
     """
     sample_rate = 16000
-    sounds = [create_tone(Hz, time, sample_rate) for Hz, time in sequence]
+    sounds = [create_tone(Hz, time, volume, sample_rate) for Hz, time in sequence]
     combined_sound = np.concatenate(sounds)
     return audio_to_wave_bytes(combined_sound, sample_rate=sample_rate)
 

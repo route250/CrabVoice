@@ -67,6 +67,9 @@ class wave_to_audio:
         finally:
             self.state = 0
 
+    def set_pause(self,b):
+        pass
+
     def stop(self):
         if self.state==1:
             self.state=2
