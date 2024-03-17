@@ -1,0 +1,7 @@
+/.venv
+/__pycache__
+/dustbox
+/logs
+/old
+/requirements.txt
+/testData

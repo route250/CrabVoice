@@ -1,0 +1,122 @@
+
+from threading import Thread, Condition
+from queue import Queue, Empty
+import time
+import logging
+
+from faster_whisper import WhisperModel
+
+from .stt_data import SttData
+from .wave_to_audio import wave_to_audio
+from .mic_to_audio import mic_to_audio
+from .audio_to_voice import AudioToVoice
+from .recognizer_google import RecognizerGoogle
+
+logger = logging.getLogger("AudioToText")
+
+class AudioToText:
+
+    def __init__(self, *, model:str=None, callback, sample_rate:int=16000, wave_dir=None):
+        self.model=model
+        self.sample_rate = sample_rate if isinstance(sample_rate,int) else 16000
+        self._state:int = 0
+        self._lock:Condition = Condition()
+        self._queue:Queue = Queue()
+        self._thread:Thread = None
+        self.callback = callback
+        self.audio_to_voice:AudioToVoice = AudioToVoice( callback=self._fn_callback, wave_dir=wave_dir )
+        self.whisper_model:WhisperModel = None
+        self.model_size = "large-v3"
+        self.w2a:wave_to_audio = None
+        self.m2a:mic_to_audio = None
+        # 
+        self.speech_state:int = 0
+
+    def load(self, *, filename=None, mic=None ):
+        try:
+            self.audio_to_voice.load()
+            if self.model=="whisper":
+                if self.whisper_model is None:
+                    logger.info("load audio to text")
+                    self.whisper_model = WhisperModel(self.model_size, device="cuda", compute_type="int8_float16")
+            else:
+                pass #google
+
+            if filename is not None:
+                self.w2a:wave_to_audio = wave_to_audio( sample_rate=16000, callback=self.audio_to_voice.audio_callback )
+                self.w2a.load(filename)
+            elif mic is not None:
+                self.m2a = mic_to_audio( sample_rate=16000, callback=self.audio_to_voice.audio_callback )
+                self.m2a.load(mic='default')
+        except:
+            logger.exception("audio to text")
+
+    def start(self):
+        try:
+            self.stop()
+            self.load()
+            with self._lock:
+                if self._state == 2:
+                    return
+                self._state = 2
+            logger.info("start audio to text")
+            self._thread = Thread( target=self._fn_process, name="AudioToText", daemon=True)
+            self._thread.start()
+            self.audio_to_voice.start()
+            if self.w2a is not None:
+                self.w2a.start()
+            elif self.m2a is not None:
+                self.m2a.start()
+        except:
+            logger.exception("audio to text")
+
+    def _fn_callback(self,stt_data:SttData):
+        self._queue.put( stt_data )
+
+    def _fn_process(self):
+        try:
+            logger.info("start audio to text")
+            while True:
+                try:
+                    stt_data:SttData = self._queue.get( timeout=1.0 )
+                except Empty:
+                    continue
+                #
+                if SttData.Term == stt_data.typ:
+                    self.callback(stt_data)
+                    if self.speech_state==2:
+                        self.speech_state=1
+                elif SttData.Voice == stt_data.typ or SttData.PreVoice == stt_data.typ:
+                    if self.speech_state!=2:
+                        self.speech_state=2
+                        self.callback( SttData( SttData.Start, stt_data.start, stt_data.start, stt_data.sample_rate) )
+                    audio = stt_data.audio
+                    if len(audio)>0:
+                        t0 = time.time()
+                        if self.model=="whisper":
+                            segments, info = self.whisper_model.transcribe( audio, beam_size=1, best_of=2, temperature=0, language='ja', condition_on_previous_text='まいど！' )
+                            text = ""
+                            for segment in segments:
+                                text = text + "//" + segment.text
+                        else:
+                            text, confidence = RecognizerGoogle.recognize( audio, sample_rate=16000 )
+                        t1 = time.time()
+                        logger.debug( f"recognize {self.model} time {t1-t0:.4f}/{len(audio)/self.sample_rate:.4f}(sec)")
+                    else:
+                        text = ''
+                    stt_data.content = text
+                    if SttData.Voice == stt_data.typ:
+                        stt_data.typ = SttData.Text
+                    elif SttData.PreVoice == stt_data.typ:
+                        stt_data.typ = SttData.PreText
+                    self.callback(stt_data)
+        except:
+            logger.exception("audio to text")
+        finally:
+            logger.info("exit audio to text")
+
+    def stop(self):
+        try:
+            logger.info("stop audio to text")
+        except:
+            logger.exception("audio to text")
