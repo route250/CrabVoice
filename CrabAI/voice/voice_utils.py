@@ -105,3 +105,42 @@ def create_sound(sequence, *, volume:float=0.3 ):
 # print( f"{a1.shape}")
 # a2 = np.array( [[0],[1],[2],[3]], dtype=np.float32 )
 # print( f"{a2.shape}")
+
+def fft_audio_signal( audio:np.ndarray, sampling_rate:int ):
+    """
+    音声データに対してFFTを実行し、周波数スペクトルを計算する。
+
+    Parameters:
+    - audio_signal: 音声データを含むnp.float32型のNumPy配列
+
+    Returns:
+    - freqs: 周波数成分（Hz）
+    - abs_fft: 周波数成分に対応する振幅の絶対値
+    """
+    # FFTを実行
+    fft_result = np.fft.fft(audio)
+    # FFT結果の絶対値を取得（複素数から振幅へ）
+    abs_fft = np.abs(fft_result)
+    
+    # 周波数のビンを計算
+    freqs = np.fft.fftfreq(len(audio), d=1.0/sampling_rate)
+    
+    # 振幅スペクトルを半分にして、負の周波数成分を除外
+    abs_fft = abs_fft[:len(abs_fft)//2]
+    freqs = freqs[:len(freqs)//2]
+    
+    return freqs, abs_fft
+
+def _voice_rate( freqs, abs_fft, low:float=100.0, high:float=1000.0 ):
+    sum_total = 0
+    sum_voice = 0
+    for freq, amp in zip( freqs, abs_fft ):
+        sum_total += amp
+        if low<=freq and freq < high:
+            sum_voice += amp
+    return round( sum_voice/sum_total, 3 )
+
+def voice_per_audio_rate( audio:np.ndarray, sampling_rate:int ):
+    freqs, abs_fft = fft_audio_signal(audio, sampling_rate )
+    rate = _voice_rate(freqs,abs_fft)
+    return rate

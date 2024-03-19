@@ -6,11 +6,13 @@ from threading import Thread, Condition
 import wave
 import webrtcvad
 import librosa
+#import scipy
 from .stt_data import SttData
 from .ring_buffer import RingBuffer
 from .hists import Hists
 from .vad_counter import VadTbl
 from .low_pos import LowPos
+from ..voice_utils import voice_per_audio_rate
 
 logger = logging.getLogger('audio_to_segment')
 
@@ -72,6 +74,8 @@ class AudioToSegment:
         self.wave_stream = None
         self.save_1:int = -1
         self.save_2:int = -1
+        # 人の声のフィルタリング（バンドパスフィルタ）
+        # self.sos = scipy.signal.butter( 4, [100, 2000], 'bandpass', fs=self.sample_rate, output='sos')
 
     def load(self):
         pass
@@ -176,34 +180,40 @@ class AudioToSegment:
                 seg_len = self.seg_buffer.get_pos() - self.rec_start
                 if self.count1:
                     if seg_len>self.ignore_length:
-                        self.rec = 2
-                        self._wave_start()
-                        # print(f"rec start {self.seg_buffer.get_pos()} {self.count1.sum}")
-                        # 直全のパルスをマージする
-                        base = self.rec_start
-                        x1 = int(self.sample_rate*2.0)
-                        x2 = int(self.sample_rate*4.0)
-                        i=len(self.ignore_list)-1
-                        while i>=0:
-                            if base-self.ignore_list[i]>x2:
-                                break
-                            if self.rec_start-self.ignore_list[i]<=x1:
-                                self.rec_start = self.ignore_list[i]
-                            i-=1
-                        self.ignore_list.clear()
-                        # 上り勾配をマージする
-                        lenx = len(self.hists)
-                        sz = 0
-                        while (sz+1)<lenx:
-                            v1 = self.hists.get_vad_count( lenx - 1 - sz )
-                            v2 = self.hists.get_vad_count( lenx - 1 - sz-1 )
-                            if v2==0 or v2>v1:
-                                break
-                            sz+=1
-                        self.rec_start = max( 0, self.rec_start - (self.frame_size * sz ))
-                        self.last_down.clear()
-                        self.prefed = False
-                        self.stt_data = SttData( SttData.Segment, self.rec_start, 0, self.sample_rate )
+                        tmpbuf = self.seg_buffer.to_numpy( -seg_len )
+                        var = voice_per_audio_rate(tmpbuf, sampling_rate=self.sample_rate)
+                        if var>0.3:
+                            print( f"segment start voice/audio {var}" )
+                            self.rec = 2
+                            self._wave_start()
+                            # print(f"rec start {self.seg_buffer.get_pos()} {self.count1.sum}")
+                            # 直全のパルスをマージする
+                            base = self.rec_start
+                            x1 = int(self.sample_rate*2.0)
+                            x2 = int(self.sample_rate*4.0)
+                            i=len(self.ignore_list)-1
+                            while i>=0:
+                                if base-self.ignore_list[i]>x2:
+                                    break
+                                if self.rec_start-self.ignore_list[i]<=x1:
+                                    self.rec_start = self.ignore_list[i]
+                                i-=1
+                            self.ignore_list.clear()
+                            # 上り勾配をマージする
+                            lenx = len(self.hists)
+                            sz = 0
+                            while (sz+1)<lenx:
+                                v1 = self.hists.get_vad_count( lenx - 1 - sz )
+                                v2 = self.hists.get_vad_count( lenx - 1 - sz-1 )
+                                if v2==0 or v2>v1:
+                                    break
+                                sz+=1
+                            self.rec_start = max( 0, self.rec_start - (self.frame_size * sz ))
+                            self.last_down.clear()
+                            self.prefed = False
+                            self.stt_data = SttData( SttData.Segment, self.rec_start, 0, self.sample_rate )
+                        # else:
+                        #     print( f"ignore pulse voice/audio {var}" )
                 else:
                     self.rec = 0
                     # print(f"rec pulse {self.seg_buffer.get_pos()} {seg_len/self.sample_rate:.3f}")

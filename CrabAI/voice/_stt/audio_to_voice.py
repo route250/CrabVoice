@@ -8,10 +8,13 @@ from heapq import heapify, heappop, heappush
 import numpy as np
 import vosk
 from vosk import KaldiRecognizer
+# import librosa
+# import scipy
 
 from .stt_data import SttData
 from . import recognizer_vosk
 from .audio_to_segment import AudioToSegment
+from ..voice_utils import voice_per_audio_rate
 
 logger = logging.getLogger("AudioToVoide")
 
@@ -35,7 +38,12 @@ class AudioToVoice:
         self.output_count:int = 0
         self.output_queue:list = []
         heapify(self.output_queue)
-
+        # 人の声のフィルタリング（バンドパスフィルタ）
+        # fs_nyq = self.sample_rate*0.5
+        # low = 200 / fs_nyq
+        # high = 1000 /fs_nyq
+        # self.pass_ba = scipy.signal.butter( 2, [low, high], 'bandpass', output='ba')
+        # self.cut_ba = scipy.signal.butter( 2, [low, high], 'bandstop', output='ba')
     def load(self):
         self.audio_to_segment.load()
         if self.use_vosk>0 and self.vosk[0] is None:
@@ -99,6 +107,15 @@ class AudioToVoice:
                         logger.debug(f"seg_to_voice {no} ignore len:{w}")
                         self._PrioritizedCallback(stt_data,True)
                         continue
+                    if stt_data.audio is not None:
+                        var = voice_per_audio_rate( stt_data.audio, sampling_rate=16000 )
+                        if var<0.3:
+                            print(f"reject {no} voice/audio {var}")
+                            logger.debug(f"reject {no} voice/audio {var}")
+                            self._PrioritizedCallback(stt_data,True)
+                            continue
+                        print( f"accept {no} voice/audio {var}" )
+                    #
                     if vosk is not None:
                         audo_sec = w/stt_data.sample_rate
                         vosk_sec = time.time()
