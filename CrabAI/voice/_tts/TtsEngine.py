@@ -18,7 +18,7 @@ import wave
 import librosa
 
 from ...net.net_utils import find_first_responsive_host
-from ..voice_utils import create_sound, audio_to_wave_bytes
+from ..voice_utils import mml_to_audio, audio_to_wave_bytes
 
 import logging
 logger = logging.getLogger('voice')
@@ -102,9 +102,9 @@ class TtsEngine:
         self._voicevox_port = os.getenv('VOICEVOX_PORT','50021')
         self._voicevox_list = list(set([os.getenv('VOICEVOX_HOST','127.0.0.1'),'127.0.0.1','192.168.0.104','chickennanban.ddns.net']))
 
-        self.sound1 = create_sound( [('C4',0.3),('E4',0.3)] )
-        self.sound2 = create_sound( [('E4',0.3),('C4',0.3)] )
-        self.sound3 = create_sound( [('A3',0.3), ('A3',0.4)] )
+        self.sound1 = mml_to_audio( "CE" )
+        self.sound2 = mml_to_audio( "EC" )
+        self.sound3 = mml_to_audio( "O3AA" )
 
     def tick_time(self, time_sec:float ):
         pass

@@ -48,30 +48,39 @@ def audio_to_wave_bytes( audio_f32, *, sample_rate ):
     wave_bytes = wav_io.read()
     return wave_bytes
 
-note_to_freq = {
-    'C': -9, 'C#': -8, 'Db': -8, 'D': -7, 'D#': -6, 'Eb': -6,
-    'E': -5, 'F': -4, 'F#': -3, 'Gb': -3, 'G': -2, 'G#': -1,
-    'Ab': -1, 'A': 0, 'A#': 1, 'Bb': 1, 'B': 2
+note_to_freq_map = {
+    'C-': -10,
+    'C': -9,
+    'C#': -8,'C+': -8, 'D-': -8,
+    'D': -7,
+    'D#': -6, 'D+': -6, 'E-': -6,
+    'E': -5,
+    'F': -4,
+    'F#': -3, 'F+': -3, 'G-': -3,
+    'G': -2,
+    'G#': -1, 'G+': -1,  'A-': -1,
+    'A': 0,
+    'A#': 1, 'A+': 1, 'B-': 1,
+    'B': 2,
+    'B#': 3, 'B+': 3,
 }
 
-def note_to_hz(note):
-    if isinstance(note,int|float):
-        return int(note)
-    """音名（例:C4）を周波数（Hz）に変換"""
-    if note in ['R', 'r', '']:  # 休符の場合
-        return 0
-    name, octave = note[:-1], int(note[-1])
-    return 440.0 * (2 ** ((octave - 4) + note_to_freq[name] / 12.0))
-
 # C4(ド) 261.63, D4(レ) 293.66  E4(ミ) 329.63 F4(ファ) 349.23 G4(ソ) 392.00 A4(ラ) 440.00 B4(シ) 493.88 C5(ド) 523.25
+def note_to_freq(note,octave) ->int:
+    """音名（例:C4）を周波数（Hz）に変換"""
+    base_freq = note_to_freq_map.get(note)
+    if base_freq is None: # 休符の場合
+        return 0
+    return int(440.0 * (2 ** ((octave - 4) + base_freq / 12.0)) )
+
 def create_tone(Hz=440, time=0.3, volume=0.3, sample_rate=16000, fade_in_time=0.05, fade_out_time=0.1):
-    Hz = note_to_hz(Hz)
     data_len = int(sample_rate * time)
     if Hz > 0:
         # 正弦波を生成
         sound = np.sin(2 * np.pi * np.arange(data_len) * Hz / sample_rate).astype(np.float32)
         # 音量
-        sound *= volume
+        if volume<1.0:
+            sound *= volume
         # フェードイン処理
         fade_in_len = int(sample_rate * fade_in_time)
         fade_in = np.linspace(0, 1, fade_in_len)  # 0から1まで線形に増加
@@ -86,34 +95,7 @@ def create_tone(Hz=440, time=0.3, volume=0.3, sample_rate=16000, fade_in_time=0.
     
     return sound
 
-def create_sound(sequence, *, volume:float=0.3 ):
-    """複数の（周波数、時間）タプルを受け取り、連続する音声データを生成する
-
-    Args:
-        sequence (list of tuples): (Hz, time)のタプルのリスト
-
-    Returns:
-        bytes: 生成された音声データのバイナリ（WAV形式）
-    """
-    sample_rate = 16000
-    sounds = [create_tone(Hz, time, volume, sample_rate) for Hz, time in sequence]
-    combined_sound = np.concatenate(sounds)
-    return audio_to_wave_bytes(combined_sound, sample_rate=sample_rate)
-
-def note_to_freq(note, octave) ->int:
-    # 各音符の基本周波数（オクターブ4を基準）
-    note_freqs = {"C": 261.63, "D": 293.66, "E": 329.63, "F": 349.23, "G": 392.00, "A": 440.00, "B": 493.88}
-    base_freq = note_freqs.get(note, 0)
-    return int( base_freq * (2 ** (octave - 4)) )
-
-def note_to_hz2(note,octave) ->int:
-    """音名（例:C4）を周波数（Hz）に変換"""
-    if note in ['R', 'r', '']:  # 休符の場合
-        return 0
-    base_freq = note_to_freq.get(note)
-    return 440.0 * (2 ** ((octave - 4) + note_to_freq[name] / 12.0))
-
-def calculate_duration(value, tempo) ->float:
+def calculate_duration_sec(value, tempo) ->float:
     # 四分音符の基本時間（秒）を計算
     quarter_note_duration = 60 / tempo
     # valueがNoneの場合はデフォルトの音符の長さ（例: 四分音符）
@@ -121,47 +103,65 @@ def calculate_duration(value, tempo) ->float:
         value = 4
     return float(quarter_note_duration * (4 / value))  # 音符の長さに応じた時間を計算
 
-def mml_to_sound( mml, *, sampling_rate:int=16000 ):
+def vol_offset(freq, lo, fr1, fr2, hi, fr3):
+    if freq < fr1:
+        dx = lo / fr1
+        return dx * (fr1 - freq)
+    elif freq >= fr3:
+        return hi
+    elif fr2 < freq < fr3:
+        dx = hi / (fr3 - fr2)
+        return dx * (freq - fr2)
+    else:  # これは fr1 <= freq <= fr2 の範囲をカバーします
+        return 0.0  # この範囲での補正値が必要な場合は、ここを調整します
+
+def mml_to_audio( mml, *, sampling_rate:int=16000 ):
     sound_list:list = []
     pos:int =0
     mml_len:int = len(mml)
     octave:int = 4  # 初期オクターブ
     tempo:int = 120  # デフォルトテンポ
     default_length:int = 4 # 音符長
-    default_vol:int = 5
+    current_vol:int = 7 # デフォルトの音量
+    max_vol: int = 15 # 音量最大値
     while pos<mml_len:
         cmd = mml[pos].upper()
         pos += 1
         if cmd==' ':
             continue
-        val = None
+
+        if pos<mml_len and mml[pos] in '#+-':
+            cmd += mml[pos]
+            pos += 1
 
         # 数値の読み取り
+        val = None
         start_pos = pos
         while pos < mml_len and '0' <= mml[pos] <= '9':
             pos += 1
         if start_pos != pos:
             val = int(mml[start_pos:pos])
 
-        if cmd == 'O':
+        if cmd == 'O' and val is not None:
             octave = val
         elif cmd == '>':
             octave += 1
         elif cmd == '<':
             octave -= 1
-        elif cmd == 'T':
+        elif cmd == 'T' and val is not None:
             tempo = val
-        elif cmd == 'L':
+        elif cmd == 'L' and val is not None:
             default_length = val
-        elif cmd == 'V':
-            default_vol = val
+        elif cmd == 'V' and val is not None:
+            current_vol = current_vol = max(0, min(val, max_vol))
         elif cmd in 'CDEFGABR':
-            ll = val if val is not None else default_length
             freq = note_to_freq(cmd, octave) if 'A' <= cmd <= 'G' else 0
-            duration = calculate_duration( ll, tempo )
-            vol = val if val is not None else default_vol
-            print( f"T{tempo} O{octave} {cmd} {ll} {vol} => Hz:{freq} Sec:{duration} Vol:{vol}")
-            sound_list.append( create_tone( freq, duration, vol, sampling_rate ) )
+            ll = val if val is not None else default_length
+            duration_sec = calculate_duration_sec( ll, tempo )
+            vol = round( current_vol/max_vol, 3 )
+            vol = vol + vol_offset( freq, 1.0, 220, 440, 1.0, 1000 )
+            print( f"T{tempo} O{octave} {cmd} {ll} {vol} => Hz:{freq} Sec:{duration_sec} Vol:{vol}")
+            sound_list.append( create_tone( freq, duration_sec, vol, sampling_rate ) )
         else:
             raise Exception(f"Invalid command: {cmd}")
     return np.concatenate(sound_list)
