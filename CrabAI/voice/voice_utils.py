@@ -32,6 +32,7 @@ def audio_to_pcm16( audio ):
 def audio_to_wave( out, audio, *, samplerate ):
     """np.float32からwaveフォーマットバイナリに変換する"""
     audio_bytes = audio_to_pcm16(audio)
+#    audio_bytes = audio_to_i16(audio)
     # wavファイルを作成してバイナリ形式で保存する
     channels = audio.shape[1] if audio.ndim>1 else 1
     with wave.open( out, "wb") as wav_file:
@@ -73,22 +74,26 @@ def note_to_freq(note,octave) ->int:
         return 0
     return int(440.0 * (2 ** ((octave - 4) + base_freq / 12.0)) )
 
-def create_tone(Hz=440, time=0.3, volume=0.3, sample_rate=16000, fade_in_time=0.05, fade_out_time=0.1):
+def create_tone(Hz=440, time=0.3, volume=0.3, sample_rate=16000, fade_in_time=0.01, fade_out_time=0.1):
     data_len = int(sample_rate * time)
     if Hz > 0:
         # 正弦波を生成
-        sound = np.sin(2 * np.pi * np.arange(data_len) * Hz / sample_rate).astype(np.float32)
+        t = np.arange(data_len) / sample_rate
+        sound = np.sin(2 * np.pi * Hz * t ).astype(np.float32)
+        # ウィンドウ関数の適用（オプション）
+        # window = np.hanning(data_len)
+        # sound *= window
+        # フェードインウィンドウの生成
+        fade_in_len = int(sample_rate * min( fade_in_time, time*0.02 ) )
+        fade_in_window = np.linspace(0, 1, fade_in_len)
+        sound[:fade_in_len] *= fade_in_window
+        # フェードアウト処理
+        fade_out_len = int(sample_rate *time*0.3 )
+        fade_out = np.linspace(1, 0, fade_out_len)  # 1から0まで線形に減少
+        sound[-fade_out_len:] *= fade_out
         # 音量
         if volume<1.0:
             sound *= volume
-        # フェードイン処理
-        fade_in_len = int(sample_rate * fade_in_time)
-        fade_in = np.linspace(0, 1, fade_in_len)  # 0から1まで線形に増加
-        sound[:fade_in_len] *= fade_in
-        # フェードアウト処理
-        fade_out_len = int(sample_rate * fade_out_time)
-        fade_out = np.linspace(1, 0, fade_out_len)  # 1から0まで線形に減少
-        sound[-fade_out_len:] *= fade_out
     else:
         # 無音
         sound = np.zeros(data_len, dtype=np.float32)
@@ -160,11 +165,11 @@ def mml_to_audio( mml, *, sampling_rate:int=16000 ):
             duration_sec = calculate_duration_sec( ll, tempo )
             vol = round( current_vol/max_vol, 3 )
             vol = vol + vol_offset( freq, 1.0, 220, 440, 1.0, 1000 )
-            print( f"T{tempo} O{octave} {cmd} {ll} {vol} => Hz:{freq} Sec:{duration_sec} Vol:{vol}")
+            print( f"T{tempo} O{octave} V{current_vol} {cmd}{ll} => Hz:{freq} Sec:{duration_sec} Vol:{vol}")
             sound_list.append( create_tone( freq, duration_sec, vol, sampling_rate ) )
         else:
             raise Exception(f"Invalid command: {cmd}")
-    return np.concatenate(sound_list)
+    return np.concatenate(sound_list,0)
 
 # a1 = np.array( [0,1,2,3], dtype=np.float32 )
 # print( f"{a1.shape}")

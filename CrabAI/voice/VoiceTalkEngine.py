@@ -31,9 +31,9 @@ class VoiceTalkEngine:
 
     def _fn_callback(self, stat:int, *, listen_text=None, confidence=None, talk_text=None, talk_emotion=None, talk_model=None ):
         if stat == VoiceTalkEngine.ST_LISTEN:
-            self.tts.play_beep1()
+            self.tts.play_listn_in()
         elif stat == VoiceTalkEngine.ST_LISTEN_END:
-            self.tts.play_beep2()
+            self.tts.play_listen_out()
 
         if self._callback is not None:
             try:

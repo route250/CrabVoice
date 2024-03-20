@@ -102,9 +102,9 @@ class TtsEngine:
         self._voicevox_port = os.getenv('VOICEVOX_PORT','50021')
         self._voicevox_list = list(set([os.getenv('VOICEVOX_HOST','127.0.0.1'),'127.0.0.1','192.168.0.104','chickennanban.ddns.net']))
 
-        self.sound1 = mml_to_audio( "CE" )
-        self.sound2 = mml_to_audio( "EC" )
-        self.sound3 = mml_to_audio( "O3AA" )
+        self.sound_listen_in = audio_to_wave_bytes( mml_to_audio( "T200C16C8E8", sampling_rate=16000 ), sample_rate=16000 )
+        self.sound_listen_out = audio_to_wave_bytes( mml_to_audio( "T200E16E8C8", sampling_rate=16000 ), sample_rate=16000 )
+        self.sound3 = audio_to_wave_bytes( mml_to_audio( "O3AA", sampling_rate=16000 ), sample_rate=16000 )
 
     def tick_time(self, time_sec:float ):
         pass
@@ -326,7 +326,7 @@ class TtsEngine:
 
     def _text_to_audio( self, text: str, emotion:int = 0 ) -> bytes:
         if TtsEngine.EOT==text:
-            return self.sound2,''
+            return self.sound_listen_out,''
         wave: bytes = None
         model:str = None
         if 0<=self.speaker and self.speaker<1000:
@@ -390,11 +390,11 @@ class TtsEngine:
             except Exception as ex:
                 logger.exception('')
 
-    def play_beep1(self):
-        self._play_beep( self.sound1 )
+    def play_listn_in(self):
+        self._play_beep( self.sound_listen_in )
 
-    def play_beep2(self):
-        self._play_beep( self.sound2 )
+    def play_listen_out(self):
+        self._play_beep( self.sound_listen_out )
 
     def play_beep3(self):
         self._play_beep( self.sound3 )
@@ -409,8 +409,10 @@ class TtsEngine:
                 self.pygame_init = True
             if self.beep_ch is not None:
                 self.beep_ch.stop()
-            sound = pygame.mixer.Sound( file=BytesIO(snd))
-            self.beep_ch:pygame.mixer.Channel = sound.play(fade_ms=1)
+            wb: BytesIO = BytesIO( snd )
+            wb.seek(0)
+            sound = pygame.mixer.Sound( wb )
+            self.beep_ch:pygame.mixer.Channel = sound.play(fade_ms=0)
             #pygame.time.delay( int(duratin_sec * 1000) )
         except:
             logger.exception('')

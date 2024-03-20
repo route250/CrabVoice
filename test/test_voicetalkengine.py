@@ -306,9 +306,9 @@ def test():
     from CrabAI.voice.tts import TtsEngine
     e = TtsEngine()
 
-    e.play_beep1()
+    e.play_listn_in()
     time.sleep(1)
-    e.play_beep2()
+    e.play_listen_out()
     time.sleep(1)
     e.play_beep3()
     time.sleep(1)
