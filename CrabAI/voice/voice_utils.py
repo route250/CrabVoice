@@ -100,6 +100,71 @@ def create_sound(sequence, *, volume:float=0.3 ):
     combined_sound = np.concatenate(sounds)
     return audio_to_wave_bytes(combined_sound, sample_rate=sample_rate)
 
+def note_to_freq(note, octave) ->int:
+    # 各音符の基本周波数（オクターブ4を基準）
+    note_freqs = {"C": 261.63, "D": 293.66, "E": 329.63, "F": 349.23, "G": 392.00, "A": 440.00, "B": 493.88}
+    base_freq = note_freqs.get(note, 0)
+    return int( base_freq * (2 ** (octave - 4)) )
+
+def note_to_hz2(note,octave) ->int:
+    """音名（例:C4）を周波数（Hz）に変換"""
+    if note in ['R', 'r', '']:  # 休符の場合
+        return 0
+    base_freq = note_to_freq.get(note)
+    return 440.0 * (2 ** ((octave - 4) + note_to_freq[name] / 12.0))
+
+def calculate_duration(value, tempo) ->float:
+    # 四分音符の基本時間（秒）を計算
+    quarter_note_duration = 60 / tempo
+    # valueがNoneの場合はデフォルトの音符の長さ（例: 四分音符）
+    if value is None:
+        value = 4
+    return float(quarter_note_duration * (4 / value))  # 音符の長さに応じた時間を計算
+
+def mml_to_sound( mml, *, sampling_rate:int=16000 ):
+    sound_list:list = []
+    pos:int =0
+    mml_len:int = len(mml)
+    octave:int = 4  # 初期オクターブ
+    tempo:int = 120  # デフォルトテンポ
+    default_length:int = 4 # 音符長
+    default_vol:int = 5
+    while pos<mml_len:
+        cmd = mml[pos].upper()
+        pos += 1
+        if cmd==' ':
+            continue
+        val = None
+
+        # 数値の読み取り
+        start_pos = pos
+        while pos < mml_len and '0' <= mml[pos] <= '9':
+            pos += 1
+        if start_pos != pos:
+            val = int(mml[start_pos:pos])
+
+        if cmd == 'O':
+            octave = val
+        elif cmd == '>':
+            octave += 1
+        elif cmd == '<':
+            octave -= 1
+        elif cmd == 'T':
+            tempo = val
+        elif cmd == 'L':
+            default_length = val
+        elif cmd == 'V':
+            default_vol = val
+        elif cmd in 'CDEFGABR':
+            ll = val if val is not None else default_length
+            freq = note_to_freq(cmd, octave) if 'A' <= cmd <= 'G' else 0
+            duration = calculate_duration( ll, tempo )
+            vol = val if val is not None else default_vol
+            print( f"T{tempo} O{octave} {cmd} {ll} {vol} => Hz:{freq} Sec:{duration} Vol:{vol}")
+            sound_list.append( create_tone( freq, duration, vol, sampling_rate ) )
+        else:
+            raise Exception(f"Invalid command: {cmd}")
+    return np.concatenate(sound_list)
 
 # a1 = np.array( [0,1,2,3], dtype=np.float32 )
 # print( f"{a1.shape}")
