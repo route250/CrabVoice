@@ -18,7 +18,7 @@ import wave
 import librosa
 
 from ...net.net_utils import find_first_responsive_host
-from ..voice_utils import mml_to_audio, audio_to_wave_bytes
+from ..voice_utils import mml_to_audio, audio_to_wave_bytes, create_tone
 
 import logging
 logger = logging.getLogger('voice')
@@ -102,9 +102,11 @@ class TtsEngine:
         self._voicevox_port = os.getenv('VOICEVOX_PORT','50021')
         self._voicevox_list = list(set([os.getenv('VOICEVOX_HOST','127.0.0.1'),'127.0.0.1','192.168.0.104','chickennanban.ddns.net']))
 
-        self.sound_listen_in = audio_to_wave_bytes( mml_to_audio( "T200C16C8E8", sampling_rate=16000 ), sample_rate=16000 )
-        self.sound_listen_out = audio_to_wave_bytes( mml_to_audio( "T200E16E8C8", sampling_rate=16000 ), sample_rate=16000 )
-        self.sound3 = audio_to_wave_bytes( mml_to_audio( "O3AA", sampling_rate=16000 ), sample_rate=16000 )
+        self.feed = create_tone( 32, time=0.4, volume=0.01, sample_rate=16000)
+        self.feed_wave = audio_to_wave_bytes(self.feed, sample_rate=16000 )
+        self.sound_listen_in = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v3 ce", sampling_rate=16000 ))), sample_rate=16000 )
+        self.sound_listen_out = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v3 ec", sampling_rate=16000 ))), sample_rate=16000 )
+        self.sound3 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "O3AA", sampling_rate=16000 ))), sample_rate=16000 )
 
     def tick_time(self, time_sec:float ):
         pass
@@ -369,9 +371,11 @@ class TtsEngine:
                             pygame.mixer.quit()
                             pygame.mixer.init()
                             self.pygame_init = True
-                        mp3_buffer = BytesIO(audio)
-                        pygame.mixer.music.load(mp3_buffer)
+                        feed_buffer = BytesIO(self.feed_wave)
+                        audio_buffer = BytesIO(audio)
+                        pygame.mixer.music.load(feed_buffer)
                         pygame.mixer.music.play(1,0.0) # 再生回数１回、フェードイン時間ゼロ
+                        pygame.mixer.music.queue(audio_buffer)
                         while not pygame.mixer.music.get_busy():
                             time.sleep(0.1)
                     # 再生終了待ち

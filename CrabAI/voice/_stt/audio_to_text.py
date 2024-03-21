@@ -4,7 +4,10 @@ from queue import Queue, Empty
 import time
 import logging
 
-from faster_whisper import WhisperModel
+try:
+    from faster_whisper import WhisperModel
+except:
+    pass
 
 from .stt_data import SttData
 from .wave_to_audio import wave_to_audio

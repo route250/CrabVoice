@@ -32,7 +32,6 @@ def audio_to_pcm16( audio ):
 def audio_to_wave( out, audio, *, samplerate ):
     """np.float32からwaveフォーマットバイナリに変換する"""
     audio_bytes = audio_to_pcm16(audio)
-#    audio_bytes = audio_to_i16(audio)
     # wavファイルを作成してバイナリ形式で保存する
     channels = audio.shape[1] if audio.ndim>1 else 1
     with wave.open( out, "wb") as wav_file:
@@ -49,6 +48,7 @@ def audio_to_wave_bytes( audio_f32, *, sample_rate ):
     wave_bytes = wav_io.read()
     return wave_bytes
 
+# 音程マップ
 note_to_freq_map = {
     'C-': -10,
     'C': -9,
@@ -80,20 +80,28 @@ def create_tone(Hz=440, time=0.3, volume=0.3, sample_rate=16000, fade_in_time=0.
         # 正弦波を生成
         t = np.arange(data_len) / sample_rate
         sound = np.sin(2 * np.pi * Hz * t ).astype(np.float32)
-        # ウィンドウ関数の適用（オプション）
-        # window = np.hanning(data_len)
-        # sound *= window
-        # フェードインウィンドウの生成
-        fade_in_len = int(sample_rate * min( fade_in_time, time*0.02 ) )
-        fade_in_window = np.linspace(0, 1, fade_in_len)
+        # # 倍音の追加（第2倍音と第3倍音）
+        # sound += 0.33 * np.sin(2 * np.pi * 2 * Hz * t)
+        # sound += 0.17 * np.sin(2 * np.pi * 3 * Hz * t)
+        # # ビブラート効果の追加
+        # vibrato_frequency = 5  # ビブラートの周波数（Hz）
+        # vibrato_amplitude = 0.005  # ビブラートの振幅
+        # sound *= np.sin(2 * np.pi * vibrato_frequency * t * vibrato_amplitude + 1)
+        # フェードイン
+        fade_in_len = int(sample_rate * min( fade_in_time, time*0.1 ) )
+        fade_in_window = np.hanning(fade_in_len*2)[:fade_in_len]
         sound[:fade_in_len] *= fade_in_window
-        # フェードアウト処理
-        fade_out_len = int(sample_rate *time*0.3 )
-        fade_out = np.linspace(1, 0, fade_out_len)  # 1から0まで線形に減少
+        # フェードアウト
+        fade_out_len = int(sample_rate*min(fade_out_time,time*0.6) )
+        fade_out = np.hanning(fade_out_len*2)[fade_out_len:]
         sound[-fade_out_len:] *= fade_out
         # 音量
         if volume<1.0:
             sound *= volume
+        # 妙な雑音がでるのを抑制
+        max_sig = np.abs(sound).max()
+        if max_sig>0.999:
+            sound *= 0.999
     else:
         # 無音
         sound = np.zeros(data_len, dtype=np.float32)
@@ -108,17 +116,19 @@ def calculate_duration_sec(value, tempo) ->float:
         value = 4
     return float(quarter_note_duration * (4 / value))  # 音符の長さに応じた時間を計算
 
-def vol_offset(freq, lo, fr1, fr2, hi, fr3):
-    if freq < fr1:
-        dx = lo / fr1
-        return dx * (fr1 - freq)
-    elif freq >= fr3:
-        return hi
-    elif fr2 < freq < fr3:
-        dx = hi / (fr3 - fr2)
-        return dx * (freq - fr2)
-    else:  # これは fr1 <= freq <= fr2 の範囲をカバーします
-        return 0.0  # この範囲での補正値が必要な場合は、ここを調整します
+def calculate_volume_adjustment(freq, low_freq=70, low_adjust=1.0, mid_freq1=100, mid_freq2=2000, high_freq=7000, high_adjust=0.2):
+    if freq <= low_freq:
+        return low_adjust
+    elif low_freq < freq <= mid_freq1:
+        # low_freqからmid_freq1の範囲で線形に変化する補正値
+        return low_adjust - (freq - low_freq) * (low_adjust / (mid_freq1 - low_freq))
+    elif mid_freq1 < freq <= mid_freq2:
+        return 0.0
+    elif mid_freq2 < freq <= high_freq:
+        # mid_freq2からhigh_freqの範囲で線形に変化する補正値
+        return (freq - mid_freq2) * (high_adjust / (high_freq - mid_freq2))
+    elif freq > high_freq:
+        return high_adjust
 
 def mml_to_audio( mml, *, sampling_rate:int=16000 ):
     sound_list:list = []
@@ -126,6 +136,7 @@ def mml_to_audio( mml, *, sampling_rate:int=16000 ):
     mml_len:int = len(mml)
     octave:int = 4  # 初期オクターブ
     tempo:int = 120  # デフォルトテンポ
+    base_sec:float = calculate_duration_sec( 4, tempo )
     default_length:int = 4 # 音符長
     current_vol:int = 7 # デフォルトの音量
     max_vol: int = 15 # 音量最大値
@@ -155,6 +166,7 @@ def mml_to_audio( mml, *, sampling_rate:int=16000 ):
             octave -= 1
         elif cmd == 'T' and val is not None:
             tempo = val
+            base_sec = calculate_duration_sec( 4, tempo )
         elif cmd == 'L' and val is not None:
             default_length = val
         elif cmd == 'V' and val is not None:
@@ -163,10 +175,15 @@ def mml_to_audio( mml, *, sampling_rate:int=16000 ):
             freq = note_to_freq(cmd, octave) if 'A' <= cmd <= 'G' else 0
             ll = val if val is not None else default_length
             duration_sec = calculate_duration_sec( ll, tempo )
-            vol = round( current_vol/max_vol, 3 )
-            vol = vol + vol_offset( freq, 1.0, 220, 440, 1.0, 1000 )
-            print( f"T{tempo} O{octave} V{current_vol} {cmd}{ll} => Hz:{freq} Sec:{duration_sec} Vol:{vol}")
-            sound_list.append( create_tone( freq, duration_sec, vol, sampling_rate ) )
+            vol =0
+            vol_t = 0
+            if current_vol>0:
+                vol = round( current_vol/max_vol, 3 )
+                vol_t = calculate_volume_adjustment( freq )
+            fade_in_sec = base_sec * 0.05
+            fade_out_sec = base_sec*0.3
+            # print( f"T{tempo} O{octave} V{current_vol} {cmd}{ll} => Hz:{freq} Sec:{duration_sec} Vol:{vol}+{vol_t}")
+            sound_list.append( create_tone( freq, duration_sec, vol+vol_t, sampling_rate, fade_in_sec, fade_out_sec ) )
         else:
             raise Exception(f"Invalid command: {cmd}")
     return np.concatenate(sound_list,0)
@@ -176,7 +193,7 @@ def mml_to_audio( mml, *, sampling_rate:int=16000 ):
 # a2 = np.array( [[0],[1],[2],[3]], dtype=np.float32 )
 # print( f"{a2.shape}")
 
-def fft_audio_signal( audio:np.ndarray, sampling_rate:int ):
+def fft_audio_signal( raw_audio:np.ndarray, sampling_rate:int ):
     """
     音声データに対してFFTを実行し、周波数スペクトルを計算する。
 
@@ -187,6 +204,8 @@ def fft_audio_signal( audio:np.ndarray, sampling_rate:int ):
     - freqs: 周波数成分（Hz）
     - abs_fft: 周波数成分に対応する振幅の絶対値
     """
+    window = np.hanning(len(raw_audio))
+    audio = raw_audio * window
     # FFTを実行
     fft_result = np.fft.fft(audio)
     # FFT結果の絶対値を取得（複素数から振幅へ）

@@ -6,13 +6,19 @@ import json
 from heapq import heapify, heappop, heappush
 
 import numpy as np
-import vosk
-from vosk import KaldiRecognizer
+try:
+    import vosk
+    from vosk import KaldiRecognizer
+except:
+    pass
 # import librosa
 # import scipy
 
 from .stt_data import SttData
-from . import recognizer_vosk
+try:
+    from . import recognizer_vosk
+except:
+    pass
 from .audio_to_segment import AudioToSegment
 from ..voice_utils import voice_per_audio_rate
 
@@ -109,7 +115,7 @@ class AudioToVoice:
                         continue
                     if stt_data.audio is not None:
                         var = voice_per_audio_rate( stt_data.audio, sampling_rate=16000 )
-                        if var<0.3:
+                        if var<0.45:
                             print(f"reject {no} voice/audio {var}")
                             logger.debug(f"reject {no} voice/audio {var}")
                             self._PrioritizedCallback(stt_data,True)

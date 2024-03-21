@@ -4,8 +4,11 @@ from pathlib import Path
 import re
 import logging
 
-import vosk
-from vosk import Model, SpkModel, KaldiRecognizer
+try:
+    import vosk
+    from vosk import Model, SpkModel, KaldiRecognizer
+except:
+    pass
 
 logger = logging.getLogger('voice')
 
