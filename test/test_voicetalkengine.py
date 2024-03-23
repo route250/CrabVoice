@@ -202,7 +202,7 @@ def main():
     logger.addHandler(console_handler)
 
     openai_llm_model='gpt-3.5-turbo'
-    speech:VoiceTalkEngine = VoiceTalkEngine()
+    speech:VoiceTalkEngine = VoiceTalkEngine() # speaker=2000gtts
 
     input_mode=True
     speech.load(stt=input_mode)
@@ -228,6 +228,7 @@ def main():
                 messages.append( {'role':'system','content':'AIはもっと短い言葉で話して下さい'})
             last_talk_seg = 0
             request_messages = []
+            # プロンプト
             request_messages.append( {'role':'system','content':pf.create_total_prompt()} )
             if len(messages)>0:
                 request_messages.append( {'role':'system','content': "# 以下はここまでの会話履歴です。"})
@@ -295,6 +296,7 @@ def main():
                 time.sleep(2.0)
                 messages.append( {'role':'assistant','content':assistant_content})
                 last_talk_len = len(assistant_content)
+                last_dict = result_dict
             except openai.APIConnectionError as ex:
                 logger.error("Cannot connect to openai: {ex}")
             except:

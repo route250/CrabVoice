@@ -19,6 +19,7 @@ import librosa
 
 from ...net.net_utils import find_first_responsive_host
 from ..voice_utils import mml_to_audio, audio_to_wave_bytes, create_tone
+from ..translate import convert_to_katakana
 
 import logging
 logger = logging.getLogger('voice')
@@ -74,7 +75,7 @@ class TtsEngine:
         lang = voice[2]
         return lang if lang else 'ja_JP'
 
-    def __init__(self, *, speaker=-1, submit_task = None, talk_callback = None ):
+    def __init__(self, *, speaker=-1, submit_task = None, talk_callback = None, katakana_dir='tmp/katakana' ):
         # 並列処理用
         self.lock:Condition = Condition()
         self._running_future:Future = None
@@ -101,6 +102,7 @@ class TtsEngine:
         self._voicevox_url = None
         self._voicevox_port = os.getenv('VOICEVOX_PORT','50021')
         self._voicevox_list = list(set([os.getenv('VOICEVOX_HOST','127.0.0.1'),'127.0.0.1','192.168.0.104','chickennanban.ddns.net']))
+        self._katakana_dir = katakana_dir
 
         self.feed = create_tone( 32, time=0.4, volume=0.01, sample_rate=16000)
         self.feed_wave = audio_to_wave_bytes(self.feed, sample_rate=16000 )
@@ -217,9 +219,11 @@ class TtsEngine:
             self._disable_voicevox = time.time()
             return None,None
         try:
+            text = convert_to_katakana(text,cache_dir=self._katakana_dir)
+            text = TtsEngine.__penpenpen(text, ' ')
             self._disable_voicevox = 0
             timeout = (5.0,180.0)
-            params = {'text': TtsEngine.__penpenpen(text, ' '), 'speaker': self.speaker, 'timeout': timeout }
+            params = {'text': text, 'speaker': self.speaker, 'timeout': timeout }
             s:requests.Session = requests.Session()
             s.mount(f'{sv_url}/audio_query', HTTPAdapter(max_retries=1))
             res1 : requests.Response = requests.post( f'{sv_url}/audio_query', params=params)
@@ -260,15 +264,12 @@ class TtsEngine:
                     # gTTSはmp3で返ってくるので変換
                     data_mp3.seek(0)
                     y, sr = librosa.load(data_mp3, sr=None)
-                    # 話速を2倍にする（時間伸縮）
-                    y_fast = librosa.effects.time_stretch(y, rate=1.5)
-                    # ピッチを下げる（ここでは半音下げる例）
-                    n_steps = -1  # ピッチを半音下げる
-                    y_shifted = librosa.effects.pitch_shift(y_fast, sr=sr, n_steps=n_steps)
-                    # 音声データをノーマライズする
-                    rate = 1.0 / np.max(np.abs(y_shifted))
-                    y_normalized = y_shifted * rate
-                    data:bytes = audio_to_wave_bytes(y_normalized, sample_rate=sr )
+                    if lang=='ja':
+                        sr = int( sr*1.7 )
+                        # ピッチを下げる
+                        n_steps = -8
+                        y = librosa.effects.pitch_shift(y, sr=sr, n_steps=n_steps)
+                    data:bytes = audio_to_wave_bytes(y, sample_rate=sr )
                 except:
                     logger.exception('convert gtts mp3 to wave')
                     data_mp3.seek(0)
