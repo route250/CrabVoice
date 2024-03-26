@@ -217,13 +217,18 @@ def fft_audio_signal( raw_audio:np.ndarray, sampling_rate:int ):
     # 振幅スペクトルを半分にして、負の周波数成分を除外
     abs_fft = abs_fft[:len(abs_fft)//2]
     freqs = freqs[:len(freqs)//2]
-    
+
+    # 窓関数の補正
+    correction_factor = 1 / np.mean(window)
+    abs_fft = abs_fft * correction_factor
     return freqs, abs_fft
 
-def _voice_rate( freqs, abs_fft, low:float=100.0, high:float=1000.0 ):
+def _voice_rate( freqs, abs_fft, *, cut:float=60, low:float=100.0, high:float=1000.0 ):
     sum_total = 0
     sum_voice = 0
     for freq, amp in zip( freqs, abs_fft ):
+        if cut>freq:
+            amp = amp * (freq/cut)
         sum_total += amp
         if low<=freq and freq < high:
             sum_voice += amp

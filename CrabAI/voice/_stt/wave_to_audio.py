@@ -17,6 +17,32 @@ class wave_to_audio:
         self.filename:str = None
         self.state:int = 0
 
+    def __getitem__(self,key):
+        if 'file'==key:
+            return self.filename
+        return None
+
+    def to_dict(self)->dict:
+        keys = ['file']
+        ret = {}
+        for key in keys:
+            ret[key] = self[key]
+        return ret
+
+    def __setitem__(self,key,val):
+        pass
+        # if 'vad.mode'==key:
+        #     if isinstance(val,(int,float)) and 0<=key<=3:
+        #         self.vad_mode = int(key)
+
+    def update(self,arg=None,**kwargs):
+        upd = {}
+        if isinstance(arg,dict):
+            upd.update(arg)
+        upd.update(kwargs)
+        for key,val in upd.items():
+            self[key]=val
+
     def load(self, filename):
         try:
             librosa.resample( np.zeros( (1,1), dtype=np.float32), orig_sr=self.sample_rate*2, target_sr=self.sample_rate ) # preload of librosa

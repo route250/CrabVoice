@@ -48,8 +48,11 @@ class AudioToSegment:
         self.seg_buffer:RingBuffer = RingBuffer( self.sample_rate * 30, dtype=np.float32 )
         self.hists:Hists = Hists( self.seg_buffer.capacity )
         # webrtc-vad
-        self.vad = webrtcvad.Vad()
+        self.vad_mode = 2
+        self.vad = webrtcvad.Vad(self.vad_mode) # 0:甘い 0:厳しい
         self.count1:VadTbl = VadTbl( self.size, up=self.up_tirg, dn=self.dn_trig )
+        #
+        self.var1 = 0.3
         # zero crossing
         self.zc_count:VadTbl = VadTbl( self.size, up=self.up_tirg, dn=self.dn_trig )
         # 判定用 カウンタとフラグ
@@ -76,6 +79,46 @@ class AudioToSegment:
         self.save_2:int = -1
         # 人の声のフィルタリング（バンドパスフィルタ）
         # self.sos = scipy.signal.butter( 4, [100, 2000], 'bandpass', fs=self.sample_rate, output='sos')
+
+    def __getitem__(self,key):
+        if 'vad.mode'==key:
+            return self.vad_mode
+        elif 'vad.up'==key:
+            return self.up_trig
+        elif 'vad.dn'==key:
+            return self.dn_trig
+        elif 'var1'==key:
+            return self.var1
+        return None
+
+    def to_dict(self)->dict:
+        keys = ['vad.mode','vad.up','vad.dn','var1']
+        ret = {}
+        for key in keys:
+            ret[key] = self[key]
+        return ret
+
+    def __setitem__(self,key,val):
+        if 'vad.mode'==key:
+            if isinstance(val,(int,float)) and 0<=key<=3:
+                self.vad_mode = int(key)
+        elif 'vad.up'==key:
+            if isinstance(val,(int,float)) and 0<=key<=1:
+                self.up_trig = float(key)
+        elif 'vad.dn'==key:
+            if isinstance(val,(int,float)) and 0<=key<=1:
+                self.dn_trig = float(key)
+        elif 'var1'==key:
+            if isinstance(val,(int,float)) and 0<=key<=1:
+                self.var1 = float(key)
+
+    def update(self,arg=None,**kwargs):
+        upd = {}
+        if isinstance(arg,dict):
+            upd.update(arg)
+        upd.update(kwargs)
+        for key,val in upd.items():
+            self[key]=val
 
     def load(self):
         pass
@@ -144,19 +187,18 @@ class AudioToSegment:
                 seg_len = self.seg_buffer.get_pos() - self.rec_start
 
                 split_len = -1
-                if seg_len>=self.min_speech_length:
-                    if seg_len>self.max_speech_length:
-                        ignore = int( self.sample_rate * 0.3 )
-                        split_len = self.last_down.get_posx( self.rec_start + ignore, self.seg_buffer.get_pos() - ignore )
-                        if split_len<0 and not self.prefed:
-                            # プリフェッチを出す
-                            self.prefed = True
-                            self.stt_data.typ = SttData.PreSegment
-                            split_len = self.rec_start + self.prefech_length
-                            logger.debug(f"rec prefech {self.count1.sum} {self.rec_start/self.sample_rate}")
+                if seg_len>self.max_speech_length:
+                    ignore = int( self.sample_rate * 0.3 )
+                    split_len = self.last_down.get_posx( self.rec_start + ignore, self.seg_buffer.get_pos() - ignore )
+                    if split_len<0 and not self.prefed:
+                        # プリフェッチを出す
+                        self.prefed = True
+                        self.stt_data.typ = SttData.PreSegment
+                        split_len = self.rec_start + self.prefech_length
+                        logger.debug(f"rec prefech {self.count1.sum} {self.rec_start/self.sample_rate}")
 
-                    elif not self.count1.active:
-                        split_len = self.seg_buffer.get_pos()
+                elif seg_len>=self.min_speech_length and not self.count1:
+                    split_len = self.seg_buffer.get_pos()
 
                 if split_len>0:
                     self._flush(split_len)
@@ -167,22 +209,26 @@ class AudioToSegment:
                         self.rec=0
                         self.silent_start = split_len
                         self._wave_end()
+
                     elif self.stt_data.typ==SttData.PreSegment:
                         # 作り直し
                         self.stt_data = SttData( SttData.Segment, self.stt_data.start, 0, self.sample_rate )
+
                     else:
                         self.rec_start = split_len
+                        # print(f"rec split {self.count1.sum} {self.rec_start/self.sample_rate}")
                         logger.debug(f"rec split {self.count1.sum} {self.rec_start/self.sample_rate}")
                         self.stt_data = SttData( SttData.Segment, self.rec_start, 0, self.sample_rate )
                         self.last_down.remove_below_pos(split_len)
                         self.prefed = False
+
             elif self.rec == 1:
                 seg_len = self.seg_buffer.get_pos() - self.rec_start
                 if self.count1:
                     if seg_len>self.ignore_length:
                         tmpbuf = self.seg_buffer.to_numpy( -seg_len )
                         var = voice_per_audio_rate(tmpbuf, sampling_rate=self.sample_rate)
-                        if var>0.3:
+                        if var>self.var1:
                             print( f"segment start voice/audio {var}" )
                             self.rec = 2
                             self._wave_start()

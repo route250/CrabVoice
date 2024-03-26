@@ -17,7 +17,7 @@ sys.path.append(os.getcwd())
 # sys.path.append('/home/maeda/LLM/MiyaSaburo/MiyaSaburo')
 from CrabAI.voice import VoiceTalkEngine
 from CrabAI.tools import JsonStreamParser, JsonStreamParseError
-from prompt_factory import PromptFactory
+from prompt_factory import PromptFactory, setup_openai_api
    
 prompt = """1. Environment
 現在日時:{datetime} 季節:{season} 
@@ -154,15 +154,15 @@ prompt_dict = [
 response_fmt = [
     { "conversation": {
         "values": [
-            { "summary": "今までの会話の短い要約。"},
-            { "topic": "この会話の短い表題" },
-            { "situation": "会話内容から会話の場面や周囲所状況を記述"},
+            { "summary": "会話履歴の要約"},
+            { "topic": "会話履歴の表題" },
+            { "situation": "会話履歴から場面や状況を推測"},
         ]
     }},
     { PromptFactory.K_PSEUDO_PERSONAL: {
         "values": [
-            { "thought": "%USER%の言葉は音声認識の精度不足のため意味不明なことがある。意味不明な場合はもう一度話してくれるように依頼する。会話内容から会話の主題、TPO、%USER%の意見・状況・感情を記述。次に、%PERSONAL%のprofileに基づいて、興味対象、疑問項目、スタンス(肯定、否定)を記述。話題を明確にして次の会話を考える。同じ話題が続いたら、関連する他の話題に切り替える。"},
-            { PromptFactory.K_TALK: "%PERSONAL%の発言"},
+            { "thought": "%USER%が意味不明なら内容を確認する。会話履歴から主題、TPO、%USER%の意見・状況・感情を推測し、次に、%PERSONAL%のprofileとして興味、疑問、スタンス(肯定、否定)を設定する。"},
+            { PromptFactory.K_TALK: "%USER%の言葉に自身の経験や感情を含めて会話履歴に沿って発言する"},
         ]
     }},
     { PromptFactory.K_FUNCS: {
@@ -175,6 +175,7 @@ response_fmt = [
 
 def main():
     from datetime import datetime
+    setup_openai_api()
 
     # 現在の日時を取得し、ファイル名に適した形式にフォーマット
     current_time = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -232,7 +233,7 @@ def main():
             request_messages.append( {'role':'system','content':pf.create_total_prompt()} )
             if len(messages)>0:
                 request_messages.append( {'role':'system','content': "# 以下はここまでの会話履歴です。"})
-            for m in messages[-10:0]:
+            for m in messages[-10:]:
                 request_messages.append(m)
 
             if 0.0<confs and confs<0.6:

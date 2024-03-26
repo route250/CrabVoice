@@ -106,9 +106,42 @@ class TtsEngine:
 
         self.feed = create_tone( 32, time=0.4, volume=0.01, sample_rate=16000)
         self.feed_wave = audio_to_wave_bytes(self.feed, sample_rate=16000 )
-        self.sound_listen_in = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v3 ce", sampling_rate=16000 ))), sample_rate=16000 )
-        self.sound_listen_out = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v3 ec", sampling_rate=16000 ))), sample_rate=16000 )
+        self.sound_listen_in = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ce", sampling_rate=16000 ))), sample_rate=16000 )
+        self.sound_listen_out = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ec", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound3 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "O3AA", sampling_rate=16000 ))), sample_rate=16000 )
+
+    def __getitem__(self,key):
+        if 'speaker.id'==key:
+            return self.speaker
+        elif 'speaker.name'==key:
+            return TtsEngine.id_to_name(self.speaker)
+        elif 'disable.gtts'==key:
+            return self._disable_gtts
+        elif 'disable.openai'==key:
+            return self._disable_openai
+        elif 'disable.voicevox'==key:
+            return self._disable_voicevox
+        return None
+
+    def to_dict(self)->dict:
+        keys = ['speaker.id','speaker.name','disable.gtts','disable.openai','disable.voicevox']
+        ret = {}
+        for key in keys:
+            ret[key] = self[key]
+        return ret
+
+    def __setitem__(self,key,val):
+        if 'speaker.id'==key:
+            if isinstance(val,(int,float)) and 0<=key<=3:
+                self.vad_mode = int(key)
+
+    def update(self,arg=None,**kwargs):
+        upd = {}
+        if isinstance(arg,dict):
+            upd.update(arg)
+        upd.update(kwargs)
+        for key,val in upd.items():
+            self[key]=val
 
     def tick_time(self, time_sec:float ):
         pass

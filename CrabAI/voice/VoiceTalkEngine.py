@@ -19,6 +19,7 @@ class VoiceTalkEngine:
     ST_TALK_END:int = 11
     ST_LISTEN:int = 20
     ST_LISTEN_END: int = 21
+
     def __init__(self, *, speaker:int=46, record_samplerate:int=1600 ):
         self._status = VoiceTalkEngine.ST_STOPPED
         self._callback = None
@@ -28,6 +29,37 @@ class VoiceTalkEngine:
         self.text_stat=0
         self.stt:AudioToText = AudioToText( callback=self._fn_stt_callback)
         self.tts:TtsEngine = TtsEngine( speaker=speaker, talk_callback=self._tts_callback)
+
+    def __getitem__(self,key):
+        if self.stt is not None:
+            val = self.stt[key]
+            if val is not None:
+                return val
+        if self.tts is not None:
+            val = self.tts[key]
+            if val is not None:
+                return val
+        return None
+
+    def to_dict(self)->dict:
+        ret = self.stt.to_dict() if self.stt is not None else {}
+        if self.tts is not None:
+            ret.update( self.tts.to_dict() )
+        return ret
+
+    def __setitem__(self,key,val):
+        if self.stt is not None:
+            self.stt[key]=val
+        if self.tts is not None:
+            self.tts[key] = val
+
+    def update(self,arg=None,**kwargs):
+        upd = {}
+        if isinstance(arg,dict):
+            upd.update(arg)
+        upd.update(kwargs)
+        for key,val in upd.items():
+            self[key]=val
 
     def _fn_callback(self, stat:int, *, listen_text=None, confidence=None, talk_text=None, talk_emotion=None, talk_model=None ):
         if stat == VoiceTalkEngine.ST_LISTEN:

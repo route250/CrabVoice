@@ -34,6 +34,7 @@ class AudioToVoice:
         self._thread:list[Thread] = [None] * self.use_vosk
         self.callback = callback
         self._mute:bool = False # ミュートする
+        self._var3:float = 0.45
         self.audio_to_segment:AudioToSegment = AudioToSegment( callback=self._fn_callback, wave_dir=wave_dir )
         self.vosk: list[KaldiRecognizer] = [None] * len(self._thread)
         self.vosk_model: vosk.Model = None
@@ -50,6 +51,37 @@ class AudioToVoice:
         # high = 1000 /fs_nyq
         # self.pass_ba = scipy.signal.butter( 2, [low, high], 'bandpass', output='ba')
         # self.cut_ba = scipy.signal.butter( 2, [low, high], 'bandstop', output='ba')
+
+    def __getitem__(self,key):
+        if 'mute'==key:
+            return self._mute
+        elif 'var3'==key:
+            return self._var3
+        return self.audio_to_segment[key]
+
+    def to_dict(self)->dict:
+        keys = ['mute','var3']
+        ret = self.audio_to_segment.to_dict()
+        for key in keys:
+            ret[key] = self[key]
+        return ret
+
+    def __setitem__(self,key,val):
+        if 'mute'==key:
+            if isinstance(val,(bool)):
+                self.set_pause(val)
+        elif 'var3'==key:
+            if isinstance(val,(int,float)) and 0<=key<=1:
+                self._var3 = float(key)
+
+    def update(self,arg=None,**kwargs):
+        upd = {}
+        if isinstance(arg,dict):
+            upd.update(arg)
+        upd.update(kwargs)
+        for key,val in upd.items():
+            self[key]=val
+
     def load(self):
         self.audio_to_segment.load()
         if self.use_vosk>0 and self.vosk[0] is None:
@@ -115,7 +147,7 @@ class AudioToVoice:
                         continue
                     if stt_data.audio is not None:
                         var = voice_per_audio_rate( stt_data.audio, sampling_rate=16000 )
-                        if var<0.45:
+                        if var<self._var3:
                             print(f"reject {no} voice/audio {var}")
                             logger.debug(f"reject {no} voice/audio {var}")
                             self._PrioritizedCallback(stt_data,True)
@@ -132,7 +164,8 @@ class AudioToVoice:
                         vosk_sec = time.time() - vosk_sec
                         txt = vosk_res.get('text')
                         if txt in ignore_list:
-                            if txt is None or txt!='' or stt_data.typ==SttData.PreSegment:
+                            if txt is None or txt!='': # or stt_data.typ==SttData.PreSegment:
+                                print( f"seg_to_voice {no} vosk ignore {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
                                 logger.debug( f"seg_to_voice {no} vosk ignore {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
                             self._PrioritizedCallback(stt_data,True)
                             continue

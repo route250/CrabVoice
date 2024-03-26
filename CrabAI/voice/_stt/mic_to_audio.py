@@ -67,6 +67,32 @@ class mic_to_audio:
         self.device = None
         self.audioinput:sd.InputStream = None
 
+    def __getitem__(self,key):
+        if 'mic'==key:
+            return self.device
+        return None
+
+    def to_dict(self)->dict:
+        keys = ['mic']
+        ret = {}
+        for key in keys:
+            ret[key] = self[key]
+        return ret
+
+    def __setitem__(self,key,val):
+        pass
+        # if 'vad.mode'==key:
+        #     if isinstance(val,(int,float)) and 0<=key<=3:
+        #         self.vad_mode = int(key)
+
+    def update(self,arg=None,**kwargs):
+        upd = {}
+        if isinstance(arg,dict):
+            upd.update(arg)
+        upd.update(kwargs)
+        for key,val in upd.items():
+            self[key]=val
+
     def load(self,*,mic=None, sample_rate=None):
         self.sample_rate = sample_rate if isinstance(sample_rate,int) else self.sample_rate
         if not mic or mic==0 or mic=='' or mic=='default':

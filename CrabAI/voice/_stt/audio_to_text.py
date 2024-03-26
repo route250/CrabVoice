@@ -35,6 +35,45 @@ class AudioToText:
         # 
         self.speech_state:int = 0
 
+    def __getitem__(self,key):
+        if self.audio_to_voice is not None:
+            val = self.audio_to_voice[key]
+            if val is not None:
+                return val
+        if self.w2a is not None:
+            val = self.w2a[key]
+            if val is not None:
+                return val
+        if self.m2a is not None:
+            val = self.m2a[key]
+            if val is not None:
+                return val
+        return None
+
+    def to_dict(self)->dict:
+        ret = self.audio_to_segment.to_dict() if self.audio_to_voice is not None else {}
+        if self.w2a is not None:
+            ret.update( self.w2a.to_dict() )
+        if self.m2a is not None:
+            ret.update( self.m2a.to_dict() )
+        return ret
+
+    def __setitem__(self,key,val):
+        if self.audio_to_voice is not None:
+            self.audio_to_voice[key]=val
+        if self.w2a is not None:
+            self.w2a[key] = val
+        if self.m2a is not None:
+            self.m2a[key] = val
+
+    def update(self,arg=None,**kwargs):
+        upd = {}
+        if isinstance(arg,dict):
+            upd.update(arg)
+        upd.update(kwargs)
+        for key,val in upd.items():
+            self[key]=val
+
     def load(self, *, filename=None, mic=None ):
         try:
             self.audio_to_voice.load()
