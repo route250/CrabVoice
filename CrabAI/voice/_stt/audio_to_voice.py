@@ -19,7 +19,7 @@ try:
     from . import recognizer_vosk
 except:
     pass
-from .audio_to_segment import AudioToSegment
+from .audio_to_segment_webrtcvad import AudioToSegmentWebrtcVAD as AudioToSegment
 from ..voice_utils import voice_per_audio_rate
 
 logger = logging.getLogger("AudioToVoide")

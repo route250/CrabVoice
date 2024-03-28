@@ -20,7 +20,7 @@ def rms_energy( audio, sr=16000 ):
     e = librosa.feature.rms( y=audio, hop_length=len(audio))[0][0]
     return e
 
-class AudioToSegment:
+class AudioToSegmentWebrtcVAD:
     """音声の区切りを検出する"""
     def __init__(self, *, callback, sample_rate:int=16000, wave_dir=None):
         # 設定
