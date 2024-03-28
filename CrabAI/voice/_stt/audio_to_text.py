@@ -2,7 +2,7 @@
 from threading import Thread, Condition
 from queue import Queue, Empty
 import time
-import logging
+from logging import getLogger
 
 try:
     from faster_whisper import WhisperModel
@@ -15,7 +15,7 @@ from .mic_to_audio import mic_to_audio
 from .audio_to_voice import AudioToVoice
 from .recognizer_google import RecognizerGoogle
 
-logger = logging.getLogger("AudioToText")
+logger = getLogger("AudioToText")
 
 class AudioToText:
 
@@ -131,7 +131,7 @@ class AudioToText:
                 elif SttData.Voice == stt_data.typ or SttData.PreVoice == stt_data.typ:
                     if self.speech_state!=2:
                         self.speech_state=2
-                        self.callback( SttData( SttData.Start, stt_data.start, stt_data.start, stt_data.sample_rate) )
+                        self.callback( SttData( SttData.Start, stt_data.start, stt_data.start, stt_data.sample_rate, seq=stt_data.seq) )
                     audio = stt_data.audio
                     if len(audio)>0:
                         t0 = time.time()

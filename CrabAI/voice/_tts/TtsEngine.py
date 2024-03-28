@@ -13,6 +13,7 @@ from openai import OpenAI
 
 from gtts import gTTS
 from io import BytesIO
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 import pygame
 import wave
 import librosa
@@ -21,8 +22,8 @@ from ...net.net_utils import find_first_responsive_host
 from ..voice_utils import mml_to_audio, audio_to_wave_bytes, create_tone
 from ..translate import convert_to_katakana
 
-import logging
-logger = logging.getLogger('voice')
+from logging import getLogger
+logger = getLogger('voice')
 
 class TtsEngine:
     EOT:str = "<|EOT|>"

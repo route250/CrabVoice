@@ -129,6 +129,16 @@ class RingBuffer:
             else:
                 return self.buffer[ (self.pos + self.length + index) % self.capacity ]
 
+    def set(self,index:int, value):
+        with self._lock:
+            # 単一のインデックスでアクセスされた場合の処理は変更なし
+            if index < -self.length or self.length <= index:
+                raise IndexError(f"Index {index} out of bounds")
+            if 0<=index:
+                self.buffer[ (self.pos + index) % self.capacity ] = value
+            else:
+                self.buffer[ (self.pos + self.length + index) % self.capacity ] = value
+
     def __getitem__(self, key) -> np.ndarray:
         if isinstance(key, slice):
             return self.to_numpy( key.start, key.stop, key.step )

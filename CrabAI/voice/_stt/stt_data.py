@@ -11,8 +11,8 @@ class SttData:
     Text:int=9
     Term:int=100
 
-    def __init__(self, typ:int, start:int, end:int, sample_rate:int, audio=None, hists=None, content:str=None):
-        self.seq:int = 0
+    def __init__(self, typ:int, start:int, end:int, sample_rate:int, audio=None, hists=None, content:str=None, seq=0):
+        self.seq:int = seq
         self.typ:int = typ
         self.start:int = start
         self.end:int = end
@@ -39,3 +39,8 @@ class SttData:
             return "Text"        
         elif SttData.Term==typ:
             return "Term"        
+
+    def __str__(self) ->str:
+        st_sec = self.start/self.sample_rate
+        ed_sec = self.end/self.sample_rate
+        return f"[ #{self.seq}, {SttData.type_to_str(self.typ)}, {self.start}({st_sec:.3f}), {self.end}({ed_sec:.3f}) {self.content} ]"
