@@ -1,6 +1,6 @@
 import sys
 import os
-import logging
+from logging import getLogger
 import time
 import traceback
 import wave
@@ -8,7 +8,7 @@ import numpy as np
 import librosa
 import sounddevice as sd
 
-logger = logging.getLogger('mic_to_audio')
+logger = getLogger('mic_to_audio')
 
 def _mic_priority(x):
     devid = x['index']
@@ -64,16 +64,19 @@ class mic_to_audio:
         self.state:int = 0
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
         self.callback = callback
-        self.device = None
+        self.mic_index = None
+        self.mic_name = None
         self.audioinput:sd.InputStream = None
 
     def __getitem__(self,key):
-        if 'mic'==key:
-            return self.device
+        if 'mic_index'==key:
+            return self.mic_index
+        elif 'mic_name'==key:
+            return self.mic_name
         return None
 
     def to_dict(self)->dict:
-        keys = ['mic']
+        keys = ['mic_index','mic_name']
         ret = {}
         for key in keys:
             ret[key] = self[key]
@@ -97,14 +100,20 @@ class mic_to_audio:
         self.sample_rate = sample_rate if isinstance(sample_rate,int) else self.sample_rate
         if not mic or mic==0 or mic=='' or mic=='default':
             inp_dev_list = get_mic_devices(samplerate=self.sample_rate, dtype=np.float32)
-            self.device = inp_dev_list[0]['index'] if inp_dev_list and len(inp_dev_list)>0 else None
+            if inp_dev_list and len(inp_dev_list)>0:
+                self.mic_index = inp_dev_list[0]['index']
+                self.mic_name = inp_dev_list[0]['name']
+                logger.info(f"selected mic : {self.mic_index} {self.mic_name}")
+                print(f"selected mic : {self.mic_index} {self.mic_name}")
+            else:
+                self.mic_index = None
         else:
-            self.device = mic
+            self.mic_index = mic
 
     def start(self):
         try:
             segsize = int( self.sample_rate * ( self.sample_rate/self.sample_rate ) * 0.1 )
-            self.audioinput = sd.InputStream( samplerate=self.sample_rate, blocksize=segsize, device=self.device, dtype=np.float32, callback=self.callback )
+            self.audioinput = sd.InputStream( samplerate=self.sample_rate, blocksize=segsize, device=self.mic_index, dtype=np.float32, callback=self.callback )
             self.audioinput.start()
         except:
             pass
@@ -113,7 +122,12 @@ class mic_to_audio:
         pass
 
     def stop(self):
-        self.__del__()
+        try:
+            if self.audioinput is not None:
+                self.audioinput.close()
+                self.audioinput = None
+        except:
+            pass
 
     def __del__(self):
         try:

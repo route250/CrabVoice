@@ -152,6 +152,8 @@ class AudioToText:
                     elif SttData.PreVoice == stt_data.typ:
                         stt_data.typ = SttData.PreText
                     self.callback(stt_data)
+                elif SttData.Dump == stt_data.typ:
+                    pass
         except:
             logger.exception("audio to text")
         finally:

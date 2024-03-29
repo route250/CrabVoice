@@ -11,9 +11,9 @@ import librosa
 from .stt_data import SttData
 from .ring_buffer import RingBuffer
 from .hists import Hists
-from .vad_counter import VadTbl
 from .low_pos import LowPos
 from ..voice_utils import voice_per_audio_rate
+from .silero_vad import SileroVAD
 
 logger = getLogger('audio_to_segment')
 
@@ -21,14 +21,14 @@ def rms_energy( audio, sr=16000 ):
     e = librosa.feature.rms( y=audio, hop_length=len(audio))[0][0]
     return e
 
-class AudioToSegmentWebrtcVAD:
+class AudioToSegmentSileroVAD:
     """音声の区切りを検出する"""
     def __init__(self, *, callback, sample_rate:int=16000, wave_dir=None):
         # 設定
         self.sample_rate = sample_rate if isinstance(sample_rate,int) else 16000
-        self.size:int = 20
-        self.up_tirg:int = 18
-        self.dn_trig:int = 0
+        self.pick_tirg:float = 0.3
+        self.up_tirg:float = 0.5
+        self.dn_trig:float = 0.2
         self.ignore_length:int = int( 0.1 * self.sample_rate )
         self.min_speech_length:int = int( 0.8 * self.sample_rate )
         self.max_speech_length:int = int( 4.8 * self.sample_rate )
@@ -40,22 +40,19 @@ class AudioToSegmentWebrtcVAD:
         self.dict_list:list[dict] = []
         # frame
         self.frame_msec:int = 10  # 10ms,20ms,30ms
-        self.frame_size:int = int( (self.sample_rate * self.frame_msec) / 1000 )  # 10ms,20ms,30ms
+        self.frame_size:int = 512 # int( (self.sample_rate * self.frame_msec) / 1000 )  # 10ms,20ms,30ms
         self.frame_buffer_len:int = 0
         self.frame_buffer:np.ndarray = np.zeros( self.frame_size, dtype=np.float32)
         # 
-        self.num_samples = 0
+        self.num_samples:int = 0
         #
         self.seg_buffer:RingBuffer = RingBuffer( self.sample_rate * 30, dtype=np.float32 )
         self.hists:Hists = Hists( self.seg_buffer.capacity )
         # webrtc-vad
-        self.vad_mode = 2
-        self.vad = webrtcvad.Vad(self.vad_mode) # 0:甘い 0:厳しい
-        self.count1:VadTbl = VadTbl( self.size, up=self.up_tirg, dn=self.dn_trig )
+        # SileroVAD
+        self.silerovad:SileroVAD = SileroVAD( window_size_samples=self.frame_size, sampling_rate=self.sample_rate )
         #
         self.var1 = 0.3
-        # zero crossing
-        self.zc_count:VadTbl = VadTbl( self.size, up=self.up_tirg, dn=self.dn_trig )
         # 判定用 カウンタとフラグ
         self.rec:int = 0
         self.rec_start:int = 0
@@ -83,8 +80,8 @@ class AudioToSegmentWebrtcVAD:
         # self.sos = scipy.signal.butter( 4, [100, 2000], 'bandpass', fs=self.sample_rate, output='sos')
 
     def __getitem__(self,key):
-        if 'vad.mode'==key:
-            return self.vad_mode
+        if 'vad.pick'==key:
+            return self.pick_tirg
         elif 'vad.up'==key:
             return self.up_trig
         elif 'vad.dn'==key:
@@ -94,16 +91,16 @@ class AudioToSegmentWebrtcVAD:
         return None
 
     def to_dict(self)->dict:
-        keys = ['vad.mode','vad.up','vad.dn','var1']
+        keys = ['vad.pick','vad.up','vad.dn','var1']
         ret = {}
         for key in keys:
             ret[key] = self[key]
         return ret
 
     def __setitem__(self,key,val):
-        if 'vad.mode'==key:
-            if isinstance(val,(int,float)) and 0<=key<=3:
-                self.vad_mode = int(key)
+        if 'vad.pick'==key:
+            if isinstance(val,(int,float)) and 0<=key<=1:
+                self.pick_tirg = float(key)
         elif 'vad.up'==key:
             if isinstance(val,(int,float)) and 0<=key<=1:
                 self.up_trig = float(key)
@@ -123,7 +120,10 @@ class AudioToSegmentWebrtcVAD:
             self[key]=val
 
     def load(self):
-        pass
+        try:
+            self.silerovad.load()
+        except:
+            logger.exception("")
 
     def start(self):
         self.frame_buffer_len=0
@@ -163,20 +163,15 @@ class AudioToSegmentWebrtcVAD:
         try:
             num_samples = self.num_samples
             # vadカウンタ                
-            pcm = frame * 32767.0
-            pcm = pcm.astype(np.int16)
-            pcm_bytes = pcm.tobytes()
-            is_speech = 1 if self.vad.is_speech( pcm_bytes, self.sample_rate ) else 0
-            self.count1.add(is_speech)
+            is_speech:float = self.silerovad.is_speech( frame )
             # ゼロ交錯数
             zz = librosa.zero_crossings(frame)
             zc = sum(zz)
-            self.zc_count.add( zc )
             #
             energy = rms_energy(frame, sr=self.sample_rate )
             #
             self.seg_buffer.append(frame)
-            self.hists.add( frame.max(), frame.min(), self.rec, self.count1.sum, is_speech, energy, zc, 0.0 )
+            self.hists.add( frame.max(), frame.min(), self.rec, is_speech, is_speech, energy, zc, 0.0 )
 
             if self._mute:
                 self.rec=0
@@ -185,33 +180,33 @@ class AudioToSegmentWebrtcVAD:
 
             if self.rec>=2:
 
-                if self.count1.sum<self.count1.size:
-                    self.last_down.push( self.seg_buffer.get_pos(), self.count1.sum )
+                if is_speech<self.up_tirg:
+                    self.last_down.push( self.seg_buffer.get_pos(), is_speech )
 
                 seg_len = self.seg_buffer.get_pos() - self.rec_start
 
-                split_len = -1
+                end_pos = -1
                 if seg_len>self.max_speech_length:
                     ignore = int( self.sample_rate * 0.3 )
-                    split_len = self.last_down.get_posx( self.rec_start + ignore, self.seg_buffer.get_pos() - ignore )
-                    if split_len<0 and not self.prefed:
+                    end_pos = self.last_down.get_posx( self.rec_start + ignore, self.seg_buffer.get_pos() - ignore )
+                    if end_pos<0 and not self.prefed:
                         # プリフェッチを出す
                         self.prefed = True
                         self.stt_data.typ = SttData.PreSegment
-                        split_len = self.rec_start + self.prefech_length
-                        logger.debug(f"rec prefech {self.count1.sum} {self.rec_start/self.sample_rate}")
+                        end_pos = self.rec_start + self.prefech_length
+                        logger.debug(f"rec prefech {is_speech} {self.rec_start/self.sample_rate}")
 
-                elif seg_len>=self.min_speech_length and not self.count1:
-                    split_len = self.seg_buffer.get_pos()
+                elif seg_len>=self.min_speech_length and is_speech<self.dn_trig:
+                    end_pos = self.seg_buffer.get_pos()
 
-                if split_len>0:
-                    self._flush(split_len)
+                if end_pos>0:
+                    self._flush( self.stt_data, end_pos)
 
-                    if not self.count1.active:
-                        # print(f"rec stop {self.count1.sum} {(split_len-self.rec_start)/self.sample_rate}")
+                    if is_speech<self.dn_trig:
+                        # print(f"rec stop {is_speech} {(split_len-self.rec_start)/self.sample_rate}")
                         self.stt_data = None
                         self.rec=0
-                        self.silent_start = split_len
+                        self.silent_start = end_pos
                         self._wave_end()
 
                     elif self.stt_data.typ==SttData.PreSegment:
@@ -219,25 +214,28 @@ class AudioToSegmentWebrtcVAD:
                         self.stt_data = SttData( SttData.Segment, self.stt_data.start, 0, self.sample_rate )
 
                     else:
-                        self.rec_start = split_len
-                        # print(f"rec split {self.count1.sum} {self.rec_start/self.sample_rate}")
-                        logger.debug(f"rec split {self.count1.sum} {self.rec_start/self.sample_rate}")
+                        self.rec_start = end_pos
+                        # print(f"rec split {is_speech} {self.rec_start/self.sample_rate}")
+                        logger.debug(f"rec split {is_speech} {self.rec_start/self.sample_rate}")
                         self.stt_data = SttData( SttData.Segment, self.rec_start, 0, self.sample_rate )
-                        self.last_down.remove_below_pos(split_len)
+                        self.last_down.remove_below_pos(end_pos)
                         self.prefed = False
 
             elif self.rec == 1:
+                # 音声の先頭部分
                 seg_len = self.seg_buffer.get_pos() - self.rec_start
-                if self.count1:
+                if is_speech>=self.up_tirg:
                     if seg_len>self.ignore_length:
+                        # 音声が規定の長さを超た
                         tmpbuf = self.seg_buffer.to_numpy( -seg_len )
                         var = voice_per_audio_rate(tmpbuf, sampling_rate=self.sample_rate)
-                        self.hists.replace_var(var)
+                        self.hists.replace_var( var )
                         if var>self.var1:
+                            # FFTでも人の声っぽいのでセグメントとして認定
                             print( f"segment start voice/audio {var}" )
                             self.rec = 2
                             self._wave_start()
-                            # print(f"rec start {self.seg_buffer.get_pos()} {self.count1.sum}")
+                            # print(f"rec start {self.seg_buffer.get_pos()} {is_speech}")
                             # 直全のパルスをマージする
                             base = self.rec_start
                             x1 = int(self.sample_rate*2.0)
@@ -251,33 +249,38 @@ class AudioToSegmentWebrtcVAD:
                                 i-=1
                             self.ignore_list.clear()
                             # 上り勾配をマージする
+                            hx = (base-self.rec_start)//self.frame_size
                             lenx = len(self.hists)
                             sz = 0
-                            while (sz+1)<lenx:
-                                v1 = self.hists.get_vad_count( lenx - 1 - sz )
-                                v2 = self.hists.get_vad_count( lenx - 1 - sz-1 )
-                                if v2==0 or v2>v1:
+                            while (hx+sz+1)<lenx:
+                                v1 = self.hists.get_vad_count( lenx - 1 -hx - sz )
+                                if v1<self.pick_tirg:
                                     break
                                 sz+=1
                             self.rec_start = max( 0, self.rec_start - (self.frame_size * sz ))
                             self.last_down.clear()
                             self.prefed = False
                             self.stt_data = SttData( SttData.Segment, self.rec_start, 0, self.sample_rate )
-                        # else:
-                        #     print( f"ignore pulse voice/audio {var}" )
+                        else:
+                            print( f"ignore pulse voice/audio {var}" )
                 else:
+                    # 規定時間より短く音声が終了
                     self.rec = 0
-                    # print(f"rec pulse {self.seg_buffer.get_pos()} {seg_len/self.sample_rate:.3f}")
+                    print(f"rec pulse {self.seg_buffer.get_pos()} {seg_len/self.sample_rate:.3f}")
                     self.ignore_list.add(self.rec_start)
                     self.rec_start = 0
             else:
-                if self.count1 and not self._mute:
+                # 音声未検出状態
+                if is_speech>=self.up_tirg and not self._mute:
+                    # 音声を検出した
                     self.rec=1
                     self.rec_start = self.seg_buffer.get_pos()
-                    # print(f"rec up {self.seg_buffer.get_pos()} {self.count1.sum}")
+                    print(f"rec up {self.seg_buffer.get_pos()} {is_speech}")
 
                 else:
-                    self._wave_close()
+                    # 音声じゃない
+                    self._wave_close() # ファイル保存終了
+                    # 無音通知処理
                     if self.silent_start>0 and (self.seg_buffer.get_pos() - self.silent_start)>self.max_silent_length:
                         stt_data = SttData( SttData.Term, self.silent_start, self.silent_start, self.sample_rate )
                         self.silent_start = 0
@@ -295,28 +298,29 @@ class AudioToSegmentWebrtcVAD:
         except:
             logger.exception(f"")
 
-    def _flush(self,split_len):
-            self.stt_data.end = split_len
+    def _flush(self,stt_data:SttData,end_pos):
+            start_pos = stt_data.start
+            stt_data.end = end_pos
 
-            b = self.seg_buffer.to_index( self.rec_start )
-            e = self.seg_buffer.to_index( split_len )
+            b = self.seg_buffer.to_index( start_pos )
+            e = self.seg_buffer.to_index( end_pos )
             audio = self.seg_buffer.to_numpy( b, e )
-            self.stt_data.audio = audio
+            stt_data.audio = audio
 
-            b = self.hists.to_index( self.rec_start // self.frame_size )
-            e = self.hists.to_index( split_len//self.frame_size )
+            b = self.hists.to_index( start_pos // self.frame_size )
+            e = self.hists.to_index( end_pos//self.frame_size )
             hists = self.hists.to_df( b, e )
-            self.stt_data.hists = hists
+            stt_data.hists = hists
 
             if self.callback is None:
-                self.dict_list.append( self.stt_data )
+                self.dict_list.append( stt_data )
             else:
-                self.callback(self.stt_data)
+                self.callback(stt_data)
     
     def end(self):
         if self.rec:
-            split_len = self.seg_buffer.get_pos()
-            self._flush(split_len)
+            end_pos = self.seg_buffer.get_pos()
+            self._flush(self.stt_data,end_pos)
             self.wave_close()
 
     def _wave_start(self):

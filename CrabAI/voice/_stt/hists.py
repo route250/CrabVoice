@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from .ring_buffer import RingBuffer
 
 class Hists:
@@ -46,6 +47,19 @@ class Hists:
         zc = self.hist_zc.to_numpy(start,end,step)
         var = self.hist_var.to_numpy(start,end,step)
         return np.vstack( (hi,lo,color,vad1,vad2,energy,zc,var))
+
+    def to_df(self, start:int=None, end:int=None, step:int=None ):
+        df = pd.DataFrame({
+            'hi': self.hist_hi.to_numpy(start,end,step),
+            'lo': self.hist_lo.to_numpy(start,end,step),
+            'color': self.hist_color.to_numpy(start,end,step),
+            'vad1': self.hist_vad_count.to_numpy(start,end,step),
+            'vad2': self.hist_vad.to_numpy(start,end,step),
+            'energy': self.hist_energy.to_numpy(start,end,step),
+            'zc': self.hist_zc.to_numpy(start,end,step),
+            'var': self.hist_var.to_numpy(start,end,step),
+        })
+        return df
 
     def add(self, hi, lo, color, vad_count, vad, energy, zc, var ):
         self.hist_hi.add(hi)

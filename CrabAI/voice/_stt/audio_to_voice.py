@@ -1,3 +1,4 @@
+import sys,os,datetime
 from threading import Thread, Condition
 from queue import Queue, PriorityQueue, Empty
 import time
@@ -9,6 +10,7 @@ import numpy as np
 try:
     import vosk
     from vosk import KaldiRecognizer
+    vosk.SetLogLevel(-1)
 except:
     pass
 # import librosa
@@ -19,7 +21,8 @@ try:
     from . import recognizer_vosk
 except:
     pass
-from .audio_to_segment_webrtcvad import AudioToSegmentWebrtcVAD as AudioToSegment
+#from .audio_to_segment_webrtcvad import AudioToSegmentWebrtcVAD as AudioToSegment
+from .audio_to_segment_silero_vad import AudioToSegmentSileroVAD as AudioToSegment
 from ..voice_utils import voice_per_audio_rate
 
 logger = logging.getLogger("AudioToVoide")
@@ -51,16 +54,20 @@ class AudioToVoice:
         # high = 1000 /fs_nyq
         # self.pass_ba = scipy.signal.butter( 2, [low, high], 'bandpass', output='ba')
         # self.cut_ba = scipy.signal.butter( 2, [low, high], 'bandstop', output='ba')
+        # データ保存用
+        self.save_path:str = None
 
     def __getitem__(self,key):
         if 'mute'==key:
             return self._mute
         elif 'var3'==key:
             return self._var3
+        elif 'save_path'==key:
+            return self._var3
         return self.audio_to_segment[key]
 
     def to_dict(self)->dict:
-        keys = ['mute','var3']
+        keys = ['mute','var3','save_path']
         ret = self.audio_to_segment.to_dict()
         for key in keys:
             ret[key] = self[key]
@@ -72,7 +79,10 @@ class AudioToVoice:
                 self.set_pause(val)
         elif 'var3'==key:
             if isinstance(val,(int,float)) and 0<=key<=1:
-                self._var3 = float(key)
+                self._var3 = float(val)
+        elif 'save_path'==key:
+            if isinstance(val,str):
+                self.save_path = val
 
     def update(self,arg=None,**kwargs):
         upd = {}
@@ -137,9 +147,7 @@ class AudioToVoice:
                 except Empty:
                     continue
                 #
-                if SttData.Term==stt_data.typ:
-                    self._PrioritizedCallback(stt_data,False)
-                elif SttData.Segment==stt_data.typ or SttData.PreSegment == stt_data.typ:
+                if SttData.Segment==stt_data.typ or SttData.PreSegment == stt_data.typ:
                     w = stt_data.end - stt_data.start
                     if w<1:
                         logger.debug(f"seg_to_voice {no} ignore len:{w}")
@@ -176,6 +184,14 @@ class AudioToVoice:
                     elif SttData.PreSegment == stt_data.typ:
                         stt_data.typ = SttData.PreVoice
                     self._PrioritizedCallback(stt_data,False)
+
+                elif SttData.Term==stt_data.typ:
+                    self._PrioritizedCallback(stt_data,False)
+                elif SttData.Dump==stt_data.typ:
+                    self._PrioritizedCallback(stt_data,True)
+                    self._save_audio(stt_data)
+                else:
+                    self._PrioritizedCallback(stt_data,True)
         except:
             logger.exception("audio to voice")
         finally:
@@ -221,3 +237,13 @@ class AudioToVoice:
             logger.info("stop audio to voice")
         except:
             logger.exception("audio to voice")
+
+    def _save_audio(self,stt_data:SttData):
+        try:
+            if self.save_path is not None and os.path.isdir(self.save_path):
+                dt = datetime.datetime.now()
+                fn = dt.strftime("audio_%Y%m%d_%H%M%S.pyz")
+                file_path = os.path.join(self.save_path,fn)
+                stt_data.save(file_path)
+        except:
+            logger.exception("can not save data")

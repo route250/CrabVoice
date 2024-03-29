@@ -6,6 +6,7 @@ import sounddevice as sd
 import numpy as np
 import openai
 from openai import OpenAI
+from httpx import ReadTimeout
 
 import logging
 logger = logging.getLogger('voice')
@@ -156,13 +157,13 @@ response_fmt = [
         "values": [
             { "summary": "会話履歴の要約"},
             { "topic": "会話履歴の表題" },
-            { "situation": "会話履歴から場面や状況を推測"},
+            { "situation": "現在地、周囲の状況、シーン、役割、感情"},
         ]
     }},
     { PromptFactory.K_PSEUDO_PERSONAL: {
         "values": [
-            { "thought": "%USER%が意味不明なら内容を確認する。会話履歴から主題、TPO、%USER%の意見・状況・感情を推測し、次に、%PERSONAL%のprofileとして興味、疑問、スタンス(肯定、否定)を設定する。"},
-            { PromptFactory.K_TALK: "%USER%の言葉に自身の経験や感情を含めて会話履歴に沿って発言する"},
+            { "thought": "%USER%の言葉が意味不明なら内容を聞き返す。%PERSONAL%をロールプレイしての思考。不足する情報はあるか？提供する情報の内容。"},
+            { PromptFactory.K_TALK: "会話履歴とthoughtから次の発言。"},
         ]
     }},
     { PromptFactory.K_FUNCS: {
@@ -204,6 +205,9 @@ def main():
 
     openai_llm_model='gpt-3.5-turbo'
     speech:VoiceTalkEngine = VoiceTalkEngine() # speaker=2000gtts
+    save_path = os.path.join('logs','audio')
+    os.makedirs(save_path,exist_ok=True)
+    speech['save_path'] = 'logs/audio'
 
     input_mode=True
     speech.load(stt=input_mode)
@@ -231,15 +235,15 @@ def main():
             request_messages = []
             # プロンプト
             request_messages.append( {'role':'system','content':pf.create_total_prompt()} )
-            if len(messages)>0:
-                request_messages.append( {'role':'system','content': "# 以下はここまでの会話履歴です。"})
+            # if len(messages)>0:
+            #     request_messages.append( {'role':'system','content': "# 以下はここまでの会話履歴です。"})
             for m in messages[-10:]:
                 request_messages.append(m)
 
-            if 0.0<confs and confs<0.6:
-                request_messages.append( {'role':'system','content':f'次のメッセージは、音声認識結果のconfidence={confs}'})
-            else:
-                request_messages.append( {'role':'system','content':pf.replaces('# 次の%Userからの入力に対して、%PERSOLANのprofileに従って出力項目を出力して下さい。')})
+            # if 0.0<confs and confs<0.6:
+            #     request_messages.append( {'role':'system','content':f'次のメッセージは、音声認識結果のconfidence={confs}'})
+            # else:
+            #     request_messages.append( {'role':'system','content':pf.replaces('# 次の%Userからの入力に対して、%PERSOLANのprofileに従って出力項目を出力して下さい。')})
             request_messages.append( {'role':'user','content':text})
             messages.append( {'role':'user','content':text})
 
@@ -276,7 +280,7 @@ def main():
                     #
                     if talk_text and len(talk_text)>len(assistant_content):
                         if assistant_content=="":
-                            print( f"{json.dumps(result_dict,ensure_ascii=False)}" )
+                            print( f"[LLM]{json.dumps(result_dict,ensure_ascii=False)}" )
                         assistant_content = talk_text
                         # 前回との差分から増加分テキストを算出
                         seg = talk_text[len(before_talk_text):]
@@ -285,11 +289,13 @@ def main():
                         if seg=="。":
                             last_talk_seg+=1
                         if seg in talk2_split:
-                            logger.info( f"{seg} : {talk_buffer}")
+                            # logger.info( f"{seg} : {talk_buffer}")
                             speech.add_talk(talk_buffer)
                             talk_buffer = ""
                 if talk_buffer:
                     speech.add_talk(talk_buffer)
+                if len(assistant_content)==0:
+                    logger.error(f"[LLM] no response?? {result_dict}")
                 speech.add_talk(VoiceTalkEngine.EOT)
                 # print( "chat response" )
                 # print( assistant_response )
@@ -300,6 +306,8 @@ def main():
                 last_dict = result_dict
             except openai.APIConnectionError as ex:
                 logger.error("Cannot connect to openai: {ex}")
+            except ReadTimeout:
+                logger.error("read timeout to OpenAI")
             except:
                 logger.exception('')
         else:
