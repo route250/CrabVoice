@@ -149,11 +149,22 @@ class TtsEngine:
         pass
 
     def _sound_init(self):
-        if not self.pygame_init:
-            pygame.mixer.pre_init(16000,-16,1,10240)
-            pygame.mixer.quit()
-            pygame.mixer.init()
-            self.pygame_init = True
+        try:
+            if self.pygame_init and (time.time()-self._last_talk)>10.0:
+                self.pygame_init = False
+                print(f"[PyGame]reset")
+                pygame.mixer.quit()
+        except:
+            logger.exception("can not reset pygame")
+        try:
+            if not self.pygame_init:
+                print(f"[PyGame]init")
+                pygame.mixer.pre_init(16000,-16,1,10240)
+                pygame.mixer.quit()
+                pygame.mixer.init()
+                self.pygame_init = True
+        except:
+            logger.exception("can not reset pygame")
         # if not self.pygame_init:
         #     pygame.init()
         #     pygame.mixer.pre_init(16000,-16,1,10240)
@@ -466,5 +477,6 @@ class TtsEngine:
             sound = pygame.mixer.Sound( wb )
             self.beep_ch:pygame.mixer.Channel = sound.play(fade_ms=0)
             #pygame.time.delay( int(duratin_sec * 1000) )
+            self._last_talk = time.time()
         except:
             logger.exception('')
