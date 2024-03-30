@@ -89,7 +89,7 @@ class AudioToText:
                 self.w2a.load(filename)
             elif mic is not None:
                 self.m2a = mic_to_audio( sample_rate=16000, callback=self.audio_to_voice.audio_callback )
-                self.m2a.load(mic='default')
+                self.m2a.load(mic=mic)
         except:
             logger.exception("audio to text")
 

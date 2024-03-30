@@ -162,8 +162,8 @@ response_fmt = [
     }},
     { PromptFactory.K_PSEUDO_PERSONAL: {
         "values": [
-            { "thought": "%USER%の言葉が意味不明なら内容を聞き返す。%PERSONAL%をロールプレイしての思考。不足する情報はあるか？提供する情報の内容。"},
-            { PromptFactory.K_TALK: "会話履歴とthoughtから次の発言。"},
+            { "thought": "%USER%の言葉が意味不明なら内容を聞き返す。%PERSONAL%をロールプレイしての思考。不足する情報はあるか？提供する情報の内容。ShortTalkの内容を決める"},
+            { PromptFactory.K_TALK: "thoughtした結果からセリフを生成"},
         ]
     }},
     { PromptFactory.K_FUNCS: {
@@ -249,67 +249,72 @@ def main():
 
             openai_timeout=15.0
             openai_max_retries=2
-            try:
-                client:OpenAI = OpenAI(timeout=openai_timeout,max_retries=openai_max_retries)
-                stream = client.chat.completions.create(
-                        messages=request_messages,
-                        model=openai_llm_model, max_tokens=1000, temperature=0.7,
-                        stream=True, response_format={"type":"json_object"}
-                )
-                talk_buffer = ""
-                assistant_response=""
-                assistant_content=""
-                result_dict=None
-                before_talk_text = ""
-                parser:JsonStreamParser = JsonStreamParser()
-                for part in stream:
-                    delta_response = part.choices[0].delta.content or ""
-                    assistant_response+=delta_response
-                    # JSONパース
-                    try:
-                        result_dict = parser.put(delta_response)
-                        if result_dict is not None and not isinstance(result_dict,dict):
-                            result_dict = { PromptFactory.K_PSEUDO_PERSONAL: { PromptFactory.K_TALK: result_dict } }
-                    except:
-                        logger.error( f'response parse error {assistant_response}')
-                    #
-                    # セリフ取得
-                    personal_dict:dict = result_dict.get( PromptFactory.K_PSEUDO_PERSONAL ) if isinstance(result_dict,dict) else None
-                    talk_text= personal_dict.get(PromptFactory.K_TALK) if isinstance(personal_dict,dict) else ""
-                    talk_text = talk_text if talk_text else ""
-                    #
-                    if talk_text and len(talk_text)>len(assistant_content):
-                        if assistant_content=="":
-                            print( f"[LLM]{json.dumps(result_dict,ensure_ascii=False)}" )
-                        assistant_content = talk_text
-                        # 前回との差分から増加分テキストを算出
-                        seg = talk_text[len(before_talk_text):]
-                        before_talk_text = talk_text
-                        talk_buffer += seg
-                        if seg=="。":
-                            last_talk_seg+=1
-                        if seg in talk2_split:
-                            # logger.info( f"{seg} : {talk_buffer}")
-                            speech.add_talk(talk_buffer)
-                            talk_buffer = ""
-                if talk_buffer:
-                    speech.add_talk(talk_buffer)
-                if len(assistant_content)==0:
-                    logger.error(f"[LLM] no response?? {result_dict}")
-                speech.add_talk(VoiceTalkEngine.EOT)
-                # print( "chat response" )
-                # print( assistant_response )
-                pf.update_profile( result_dict )
-                time.sleep(2.0)
-                messages.append( {'role':'assistant','content':assistant_content})
-                last_talk_len = len(assistant_content)
-                last_dict = result_dict
-            except openai.APIConnectionError as ex:
-                logger.error("Cannot connect to openai: {ex}")
-            except ReadTimeout:
-                logger.error("read timeout to OpenAI")
-            except:
-                logger.exception('')
+            gen=3
+            while gen>=0:
+                gen -= 1
+                try:
+                    client:OpenAI = OpenAI(timeout=openai_timeout,max_retries=openai_max_retries)
+                    stream = client.chat.completions.create(
+                            messages=request_messages,
+                            model=openai_llm_model, max_tokens=1000, temperature=0.7,
+                            stream=True, response_format={"type":"json_object"}
+                    )
+                    talk_buffer = ""
+                    assistant_response=""
+                    assistant_content=""
+                    result_dict=None
+                    before_talk_text = ""
+                    parser:JsonStreamParser = JsonStreamParser()
+                    for part in stream:
+                        delta_response = part.choices[0].delta.content or ""
+                        assistant_response+=delta_response
+                        # JSONパース
+                        try:
+                            result_dict = parser.put(delta_response)
+                            if result_dict is not None and not isinstance(result_dict,dict):
+                                result_dict = { PromptFactory.K_PSEUDO_PERSONAL: { PromptFactory.K_TALK: result_dict } }
+                        except:
+                            logger.error( f'response parse error {assistant_response}')
+                        #
+                        # セリフ取得
+                        personal_dict:dict = result_dict.get( PromptFactory.K_PSEUDO_PERSONAL ) if isinstance(result_dict,dict) else None
+                        talk_text= personal_dict.get(PromptFactory.K_TALK) if isinstance(personal_dict,dict) else ""
+                        talk_text = talk_text if talk_text else ""
+                        #
+                        if talk_text and len(talk_text)>len(assistant_content):
+                            if assistant_content=="":
+                                print( f"[LLM]{json.dumps(result_dict,ensure_ascii=False)}" )
+                            assistant_content = talk_text
+                            # 前回との差分から増加分テキストを算出
+                            seg = talk_text[len(before_talk_text):]
+                            before_talk_text = talk_text
+                            talk_buffer += seg
+                            if seg=="。":
+                                last_talk_seg+=1
+                            if seg in talk2_split:
+                                # logger.info( f"{seg} : {talk_buffer}")
+                                speech.add_talk(talk_buffer)
+                                talk_buffer = ""
+                    if talk_buffer:
+                        speech.add_talk(talk_buffer)
+                    if len(assistant_content)>0:
+                        gen=-1
+                except openai.APIConnectionError as ex:
+                    logger.error("Cannot connect to openai: {ex}")
+                except ReadTimeout:
+                    logger.error("read timeout to OpenAI")
+                except:
+                    logger.exception('')
+            if len(assistant_content)==0:
+                logger.error(f"[LLM] no response?? {result_dict}")
+            speech.add_talk(VoiceTalkEngine.EOT)
+            # print( "chat response" )
+            # print( assistant_response )
+            pf.update_profile( result_dict )
+            time.sleep(2.0)
+            messages.append( {'role':'assistant','content':assistant_content})
+            last_talk_len = len(assistant_content)
+            last_dict = result_dict
         else:
             time.sleep(0.5)
             speech.tick_time( time.time() )

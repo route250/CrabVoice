@@ -172,9 +172,9 @@ class AudioToVoice:
                         vosk_sec = time.time() - vosk_sec
                         txt = vosk_res.get('text')
                         if txt in ignore_list:
-                            if txt is None or txt!='': # or stt_data.typ==SttData.PreSegment:
-                                print( f"seg_to_voice {no} vosk ignore {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
-                                logger.debug( f"seg_to_voice {no} vosk ignore {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                            # if txt is None or txt!='': # or stt_data.typ==SttData.PreSegment:
+                            print( f"seg_to_voice {no} vosk ignore {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                            logger.debug( f"seg_to_voice {no} vosk ignore {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
                             self._PrioritizedCallback(stt_data,True)
                             continue
                         logger.debug( f"seg_to_voice {no} vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")

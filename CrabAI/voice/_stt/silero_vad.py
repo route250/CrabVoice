@@ -37,17 +37,19 @@ class SileroVAD:
 
     def load(self) ->None:
         try:
-            home_dir = os.path.expanduser("~")
-            cache_dir=os.path.join( home_dir, ".cache" )
-            files_dir=os.path.join( cache_dir, "torch","hub", "snakers4_silero-vad_master","files" )
-            model_path = os.path.join( files_dir, "silero_vad.jit")
-            if not os.path.exists(model_path):
-                # download example
-                logger.info("download SileroVAD models")
-                torch.hub.download_url_to_file('https://models.silero.ai/vad_models/en.wav', 'en_example.wav')
-            if not os.path.exists(model_path):
-                raise AssertionError("can not load model")
-            self.model = init_jit_model(model_path, device=self.device)
+            if self.model is None:
+                home_dir = os.path.expanduser("~")
+                cache_dir=os.path.join( home_dir, ".cache" )
+                files_dir=os.path.join( cache_dir, "torch","hub", "snakers4_silero-vad_master","files" )
+                model_path = os.path.join( files_dir, "silero_vad.jit")
+                if not os.path.exists(model_path):
+                    # download example
+                    logger.info("download SileroVAD models")
+                    #torch.hub.download_url_to_file('https://models.silero.ai/vad_models/en.wav', 'en_example.wav')
+                    torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad',)
+                if not os.path.exists(model_path):
+                    raise AssertionError("can not load model")
+                self.model = init_jit_model(model_path, device=self.device)
         except:
             logger.exception("can not load SileroVAD model")
 

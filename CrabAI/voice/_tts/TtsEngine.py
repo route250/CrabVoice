@@ -407,14 +407,20 @@ class TtsEngine:
                             pygame.mixer.init()
                             self.pygame_init = True
                         feed_buffer = BytesIO(self.feed_wave)
+                        feed_buffer.seek(0)
                         audio_buffer = BytesIO(audio)
-                        pygame.mixer.music.load(feed_buffer)
-                        pygame.mixer.music.play(1,0.0) # 再生回数１回、フェードイン時間ゼロ
-                        pygame.mixer.music.queue(audio_buffer)
-                        while not pygame.mixer.music.get_busy():
+                        audio_buffer.seek(0)
+                        #pygame.mixer.music.load(feed_buffer)
+                        pygame.mixer.music.load(audio_buffer)
+                        pygame.mixer.music.play(1,0.0,0) # 再生回数１回、フェードイン時間ゼロ
+                        # 再生開始待ち
+                        for ix in range(5):
+                            if pygame.mixer.music.get_busy():
+                                break
                             time.sleep(0.1)
                     # 再生終了待ち
                     if audio is not None:
+                        time.sleep(0.2)
                         if pygame.mixer.music.get_busy():
                             while pygame.mixer.music.get_busy():
                                 if talk_id != self._talk_id:
