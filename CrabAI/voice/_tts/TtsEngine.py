@@ -83,6 +83,7 @@ class TtsEngine:
         self._running_future2:Future = None
         self.wave_queue:Queue = Queue()
         self.play_queue:Queue = Queue()
+        self._last_talk:float = 0
         # 発声中のセリフのID
         self._talk_id: int = 0
         # 音声エンジン選択
@@ -146,6 +147,19 @@ class TtsEngine:
 
     def tick_time(self, time_sec:float ):
         pass
+
+    def _sound_init(self):
+        if not self.pygame_init:
+            pygame.mixer.pre_init(16000,-16,1,10240)
+            pygame.mixer.quit()
+            pygame.mixer.init()
+            self.pygame_init = True
+        # if not self.pygame_init:
+        #     pygame.init()
+        #     pygame.mixer.pre_init(16000,-16,1,10240)
+        #     pygame.mixer.quit()
+        #     pygame.mixer.init()
+        #     self.pygame_init = True
 
     def submit_task(self, func ) -> Future:
         if self.submit_call is not None:
@@ -401,26 +415,23 @@ class TtsEngine:
                         self.start_call( text, emotion, tts_model )
                     # 再生処理
                     if audio is not None:
-                        if not self.pygame_init:
-                            pygame.mixer.pre_init(16000,-16,1,10240)
-                            pygame.mixer.quit()
-                            pygame.mixer.init()
-                            self.pygame_init = True
-                        feed_buffer = BytesIO(self.feed_wave)
-                        feed_buffer.seek(0)
+                        self._sound_init()
                         audio_buffer = BytesIO(audio)
                         audio_buffer.seek(0)
-                        #pygame.mixer.music.load(feed_buffer)
-                        pygame.mixer.music.load(audio_buffer)
-                        pygame.mixer.music.play(1,0.0,0) # 再生回数１回、フェードイン時間ゼロ
-                        # 再生開始待ち
-                        for ix in range(5):
-                            if pygame.mixer.music.get_busy():
-                                break
+                        if (time.time()-self._last_talk)>5.0:
+                            feed_buffer = BytesIO(self.feed_wave)
+                            feed_buffer.seek(0)
+                            pygame.mixer.music.load(feed_buffer)
+                            pygame.mixer.music.play()
+                            pygame.mixer.music.queue(audio_buffer)
+                        else:
+                            pygame.mixer.music.load(audio_buffer)
+                            pygame.mixer.music.play()
+                        while not pygame.mixer.music.get_busy():
                             time.sleep(0.1)
+                        self._last_talk = time.time()
                     # 再生終了待ち
                     if audio is not None:
-                        time.sleep(0.2)
                         if pygame.mixer.music.get_busy():
                             while pygame.mixer.music.get_busy():
                                 if talk_id != self._talk_id:
@@ -428,6 +439,7 @@ class TtsEngine:
                                     break
                                 time.sleep(0.2)
                             time.sleep(0.5)
+                        self._last_talk = time.time()
                     # 再生終了通知
                     if self.start_call is not None:
                         self.start_call( None, emotion, tts_model )
@@ -446,12 +458,7 @@ class TtsEngine:
 
     def _play_beep(self, snd ):
         try:
-            if not self.pygame_init:
-                pygame.init()
-                pygame.mixer.pre_init(16000,-16,1,10240)
-                pygame.mixer.quit()
-                pygame.mixer.init()
-                self.pygame_init = True
+            self._sound_init()
             if self.beep_ch is not None:
                 self.beep_ch.stop()
             wb: BytesIO = BytesIO( snd )
