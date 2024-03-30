@@ -10,27 +10,36 @@ def _to_npy_str(value) -> np.ndarray:
     return np.frombuffer( bytes(str(value), 'utf-8'), dtype=np.uint8)
 
 def _from_npy_str(npy: np.ndarray) -> str:
-    if npy is None:
+    if not isinstance(npy,np.ndarray) or len(npy.shape)!=1:
         return None
     return npy.tobytes().decode('utf-8')
 
 def _to_npy_i16(value) ->np.ndarray:
     return np.array([value]).astype(np.int16)
 
-def _from_npy_i16(npy:np.ndarray) ->int:
-    return int( npy[0] )
+def _from_npy_i16(npy:np.ndarray,default=0) ->int:
+    try:
+        return int( npy[0] )
+    except:
+        return default
 
 def _to_npy_i64(value) ->np.ndarray:
     return np.array([value]).astype(np.int64)
 
-def _from_npy_i64(npy:np.ndarray) ->int:
-    return int( npy[0] )
+def _from_npy_i64(npy:np.ndarray,default=0) ->int:
+    try:
+        return int( npy[0] )
+    except:
+        return default
 
 def _to_npy_f32(value) ->np.ndarray:
     return np.array([value]).astype(np.float)
 
-def _from_npy_f32(npy:np.ndarray) ->float:
-    return float( npy[0] )
+def _from_npy_f32(npy:np.ndarray,default=0.0) ->float:
+    try:
+        return float( npy[0] )
+    except:
+        return default
 
 class SttData:
     Start:int = 1

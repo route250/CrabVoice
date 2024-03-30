@@ -7,7 +7,7 @@ from threading import Thread, Condition
 import wave
 import webrtcvad
 import librosa
-#import scipy
+from scipy import signal
 from .stt_data import SttData
 from .ring_buffer import RingBuffer
 from .hists import Hists
@@ -25,9 +25,9 @@ class AudioToSegmentSileroVAD:
     """音声の区切りを検出する"""
     def __init__(self, *, callback, sample_rate:int=16000, wave_dir=None):
         # 設定
-        self.sample_rate = sample_rate if isinstance(sample_rate,int) else 16000
+        self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
         self.pick_tirg:float = 0.3
-        self.up_tirg:float = 0.5
+        self.up_tirg:float = 0.45
         self.dn_trig:float = 0.2
         self.ignore_length:int = int( 0.1 * self.sample_rate )
         self.min_speech_length:int = int( 0.8 * self.sample_rate )
@@ -78,6 +78,20 @@ class AudioToSegmentSileroVAD:
         self.last_dump:int = 0
         # 人の声のフィルタリング（バンドパスフィルタ）
         # self.sos = scipy.signal.butter( 4, [100, 2000], 'bandpass', fs=self.sample_rate, output='sos')
+        # ハイパスフィルタ
+        fpass = 40
+        fstop = 5
+        gpass = 3
+        gstop = 40
+        fn = self.sample_rate / 2   #ナイキスト周波数
+        wp = fpass / fn  #ナイキスト周波数で通過域端周波数を正規化
+        ws = fstop / fn  #ナイキスト周波数で阻止域端周波数を正規化
+        N, Wn = signal.buttord(wp, ws, gpass, gstop)  #オーダーとバターワースの正規化周波数を計算
+        self.b, self.a = signal.butter(N, Wn, "high")   #フィルタ伝達関数の分子と分母を計算
+
+    def hipass(self,x):
+        y = signal.filtfilt(self.b, self.a, x)    #信号に対してフィルタをかける
+        return y  
 
     def __getitem__(self,key):
         if 'vad.pick'==key:
@@ -143,6 +157,8 @@ class AudioToSegmentSileroVAD:
             buffer_len:int = self.frame_buffer_len
             mono_f32 = raw_audio[:,0]
             mono_len = len(mono_f32)
+            # ローカットフィルタ 50Hz以下をカットする
+            mono_f32 = self.hipass(mono_f32)
             mono_pos = 0
             while mono_pos<mono_len:
                 # 分割

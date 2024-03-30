@@ -242,7 +242,7 @@ class AudioToVoice:
         try:
             if self.save_path is not None and os.path.isdir(self.save_path):
                 dt = datetime.datetime.now()
-                fn = dt.strftime("audio_%Y%m%d_%H%M%S.pyz")
+                fn = dt.strftime("audio_%Y%m%d_%H%M%S")
                 file_path = os.path.join(self.save_path,fn)
                 stt_data.save(file_path)
         except:

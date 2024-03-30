@@ -103,7 +103,7 @@ class TtsEngine:
         # VOICEVOXサーバURL
         self._voicevox_url = None
         self._voicevox_port = os.getenv('VOICEVOX_PORT','50021')
-        self._voicevox_list = list(set([os.getenv('VOICEVOX_HOST','127.0.0.1'),'127.0.0.1','192.168.0.104','chickennanban.ddns.net']))
+        self._voicevox_list = list(set([os.getenv('VOICEVOX_HOST','127.0.0.1'),'127.0.0.1','192.168.0.104','chickennanban.ddns.net','chickennanban1.ddns.net','chickennanban2.ddns.net','chickennanban3.ddns.net']))
         self._katakana_dir = katakana_dir
 
         self.feed = create_tone( 32, time=0.4, volume=0.01, sample_rate=16000)
