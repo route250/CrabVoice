@@ -2,6 +2,7 @@
 /__pycache__
 /dustbox
 /logs
+/tmp
 /old
 /requirements.txt
 /testData
