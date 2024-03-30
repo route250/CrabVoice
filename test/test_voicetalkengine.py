@@ -208,6 +208,8 @@ def main():
     save_path = os.path.join('logs','audio')
     os.makedirs(save_path,exist_ok=True)
     speech['save_path'] = 'logs/audio'
+    # speech['vad.vosk'] = False
+    # speech['var3']=0.0
 
     input_mode=True
     speech.load(stt=input_mode)

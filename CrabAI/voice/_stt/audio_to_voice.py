@@ -1,31 +1,32 @@
+from logging import getLogger
+logger = getLogger("AudioToVoide")
+
 import sys,os,datetime
 from threading import Thread, Condition
 from queue import Queue, PriorityQueue, Empty
 import time
-import logging
 import json
 from heapq import heapify, heappop, heappush
 
 import numpy as np
+_X_VOSK_:bool=False
 try:
     import vosk
     from vosk import KaldiRecognizer
     vosk.SetLogLevel(-1)
+    from . import recognizer_vosk
+    _X_VOSK:bool=True
 except:
+    _X_VOSK:bool=False
     pass
 # import librosa
 # import scipy
 
 from .stt_data import SttData
-try:
-    from . import recognizer_vosk
-except:
-    pass
+
 #from .audio_to_segment_webrtcvad import AudioToSegmentWebrtcVAD as AudioToSegment
 from .audio_to_segment_silero_vad import AudioToSegmentSileroVAD as AudioToSegment
 from ..voice_utils import voice_per_audio_rate
-
-logger = logging.getLogger("AudioToVoide")
 
 class AudioToVoice:
     def __init__(self, *, callback, sample_rate:int=16000, wave_dir=None):
@@ -33,8 +34,9 @@ class AudioToVoice:
         self._state:int = 0
         self._lock:Condition = Condition()
         self._queue:Queue = Queue()
-        self.use_vosk:int = 2
-        self._thread:list[Thread] = [None] * self.use_vosk
+        self.vad_vosk = _X_VOSK
+        self.num_threads:int = 2
+        self._thread:list[Thread] = [None] * self.num_threads
         self.callback = callback
         self._mute:bool = False # ミュートする
         self._var3:float = 0.45
@@ -62,6 +64,8 @@ class AudioToVoice:
             return self._mute
         elif 'var3'==key:
             return self._var3
+        elif 'vad.vosk'==key:
+            return self.vad_vosk
         elif 'save_path'==key:
             return self._var3
         return self.audio_to_segment[key]
@@ -78,8 +82,11 @@ class AudioToVoice:
             if isinstance(val,(bool)):
                 self.set_pause(val)
         elif 'var3'==key:
-            if isinstance(val,(int,float)) and 0<=key<=1:
+            if isinstance(val,(int,float)) and 0<=val<=1:
                 self._var3 = float(val)
+        elif 'vad.vosk'==key:
+            if isinstance(val,(bool)):
+                self.vad_vosk=val
         elif 'save_path'==key:
             if isinstance(val,str):
                 self.save_path = val
@@ -94,7 +101,7 @@ class AudioToVoice:
 
     def load(self):
         self.audio_to_segment.load()
-        if self.use_vosk>0 and self.vosk[0] is None:
+        if self.num_threads>0 and self.vosk[0] is None:
             if self.vosk_model is None:
                 logger.info( f"load vosk lang model" )
                 self.vosk_model = recognizer_vosk.get_vosk_model(lang="ja")
@@ -162,7 +169,7 @@ class AudioToVoice:
                             continue
                         print( f"accept {no} voice/audio {var}" )
                     #
-                    if vosk is not None:
+                    if self.vad_vosk and vosk is not None:
                         audo_sec = w/stt_data.sample_rate
                         vosk_sec = time.time()
                         audio_i16:np.ndarray = stt_data.audio[:self.vosk_max_len] * 32767.0
