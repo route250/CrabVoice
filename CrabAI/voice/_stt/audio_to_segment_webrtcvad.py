@@ -136,7 +136,7 @@ class AudioToSegmentWebrtcVAD:
     def stop(self):
         pass
 
-    def audio_callback(self, raw_audio:np.ndarray, *args ) ->bool:
+    def audio_callback(self, utc, raw_audio:np.ndarray, *args ) ->bool:
         """音声データをself.frame_sizeで分割して処理を呼び出す"""
         try:
             buffer:np.ndarray = self.frame_buffer
@@ -152,14 +152,14 @@ class AudioToSegmentWebrtcVAD:
                 mono_pos+=nn
                 # framesizeになったら呼び出す
                 if buffer_len>=self.frame_size:
-                    self._Process_frame( buffer )
+                    self._Process_frame( utc, buffer, buffer )
                     self.num_samples += buffer_len
                     buffer_len = 0
             self.frame_buffer_len = buffer_len
         except:
             logger.exception(f"")
 
-    def _Process_frame(self, frame:np.ndarray ) ->bool:
+    def _Process_frame(self, utc:float, frame_raw:np.ndarray, frame:np.ndarray ) ->bool:
         try:
             num_samples = self.num_samples
             # vadカウンタ                
@@ -216,13 +216,13 @@ class AudioToSegmentWebrtcVAD:
 
                     elif self.stt_data.typ==SttData.PreSegment:
                         # 作り直し
-                        self.stt_data = SttData( SttData.Segment, self.stt_data.start, 0, self.sample_rate )
+                        self.stt_data = SttData( SttData.Segment, utc, self.stt_data.start, 0, self.sample_rate )
 
                     else:
                         self.rec_start = split_len
                         # print(f"rec split {self.count1.sum} {self.rec_start/self.sample_rate}")
                         logger.debug(f"rec split {self.count1.sum} {self.rec_start/self.sample_rate}")
-                        self.stt_data = SttData( SttData.Segment, self.rec_start, 0, self.sample_rate )
+                        self.stt_data = SttData( SttData.Segment, utc, self.rec_start, 0, self.sample_rate )
                         self.last_down.remove_below_pos(split_len)
                         self.prefed = False
 
@@ -262,7 +262,7 @@ class AudioToSegmentWebrtcVAD:
                             self.rec_start = max( 0, self.rec_start - (self.frame_size * sz ))
                             self.last_down.clear()
                             self.prefed = False
-                            self.stt_data = SttData( SttData.Segment, self.rec_start, 0, self.sample_rate )
+                            self.stt_data = SttData( SttData.Segment, utc, self.rec_start, 0, self.sample_rate )
                         # else:
                         #     print( f"ignore pulse voice/audio {var}" )
                 else:
@@ -279,7 +279,7 @@ class AudioToSegmentWebrtcVAD:
                 else:
                     self._wave_close()
                     if self.silent_start>0 and (self.seg_buffer.get_pos() - self.silent_start)>self.max_silent_length:
-                        stt_data = SttData( SttData.Term, self.silent_start, self.silent_start, self.sample_rate )
+                        stt_data = SttData( SttData.Term, utc, self.silent_start, self.silent_start, self.sample_rate )
                         self.silent_start = 0
                         if self.callback is None:
                             self.dict_list.append( stt_data )
@@ -290,7 +290,7 @@ class AudioToSegmentWebrtcVAD:
                 self.last_dump = num_samples+len(frame)
                 ed = self.seg_buffer.get_pos()
                 st = ed - self.seg_buffer.capacity
-                dmp:SttData = SttData( SttData.Dump, st, ed, self.sample_rate )
+                dmp:SttData = SttData( SttData.Dump, utc, st, ed, self.sample_rate )
                 self._flush( dmp, ed )
         except:
             logger.exception(f"")

@@ -119,6 +119,9 @@ class SttDataViewer(tk.Tk):
     def update_result(self, file_path):
         try:
             stt_data:SttData = SttData.load(file_path)
+            if stt_data is None:
+                print(f"ロードできません: {file_path}")
+                return
         except:
             print(f"ロードできません: {file_path}")
         if stt_data.typ != SttData.Text and stt_data.typ != SttData.Dump:

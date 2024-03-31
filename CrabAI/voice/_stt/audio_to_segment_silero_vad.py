@@ -38,15 +38,17 @@ class AudioToSegmentSileroVAD:
         self._mute:bool = False
         self.callback = callback
         self.dict_list:list[dict] = []
-        # frame
+        # フレーム分割用のバッファ
         self.frame_msec:int = 10  # 10ms,20ms,30ms
         self.frame_size:int = 512 # int( (self.sample_rate * self.frame_msec) / 1000 )  # 10ms,20ms,30ms
         self.frame_buffer_len:int = 0
-        self.frame_buffer:np.ndarray = np.zeros( self.frame_size, dtype=np.float32)
+        self.frame_buffer_raw:np.ndarray = np.zeros( self.frame_size, dtype=np.float32)
+        self.frame_buffer_cut:np.ndarray = np.zeros( self.frame_size, dtype=np.float32)
         # 
         self.num_samples:int = 0
         #
         self.seg_buffer:RingBuffer = RingBuffer( self.sample_rate * 30, dtype=np.float32 )
+        self.raw_buffer:RingBuffer = RingBuffer( self.seg_buffer.capacity, dtype=np.float32 )
         self.hists:Hists = Hists( self.seg_buffer.capacity )
         # webrtc-vad
         # SileroVAD
@@ -79,10 +81,10 @@ class AudioToSegmentSileroVAD:
         # 人の声のフィルタリング（バンドパスフィルタ）
         # self.sos = scipy.signal.butter( 4, [100, 2000], 'bandpass', fs=self.sample_rate, output='sos')
         # ハイパスフィルタ
-        fpass = 40
+        fpass = 60
         fstop = 5
         gpass = 3
-        gstop = 40
+        gstop = 60
         fn = self.sample_rate / 2   #ナイキスト周波数
         wp = fpass / fn  #ナイキスト周波数で通過域端周波数を正規化
         ws = fstop / fn  #ナイキスト周波数で阻止域端周波数を正規化
@@ -150,33 +152,44 @@ class AudioToSegmentSileroVAD:
     def stop(self):
         pass
 
-    def audio_callback(self, raw_audio:np.ndarray, *args ) ->bool:
+    def audio_callback(self, utc:float, raw_audio:np.ndarray, *args ) ->bool:
         """音声データをself.frame_sizeで分割して処理を呼び出す"""
         try:
-            buffer:np.ndarray = self.frame_buffer
+            if raw_audio is None:
+                # End of stream
+                self._Process_frame( utc, None,None )
+                self.frame_buffer_len = 0
+                return
+
+            buffer_raw:np.ndarray = self.frame_buffer_raw
+            buffer_cut:np.ndarray = self.frame_buffer_cut
             buffer_len:int = self.frame_buffer_len
             mono_f32 = raw_audio[:,0]
+            mono_cut = self.hipass(mono_f32) # ローカットフィルタ
+
             mono_len = len(mono_f32)
-            # ローカットフィルタ 50Hz以下をカットする
-            mono_f32 = self.hipass(mono_f32)
             mono_pos = 0
             while mono_pos<mono_len:
                 # 分割
                 nn = min( mono_len-mono_pos, self.frame_size - buffer_len )
-                np.copyto( buffer[buffer_len:buffer_len+nn], mono_f32[mono_pos:mono_pos+nn])
+                np.copyto( buffer_raw[buffer_len:buffer_len+nn], mono_f32[mono_pos:mono_pos+nn])
+                np.copyto( buffer_cut[buffer_len:buffer_len+nn], mono_cut[mono_pos:mono_pos+nn])
                 buffer_len += nn
                 mono_pos+=nn
                 # framesizeになったら呼び出す
                 if buffer_len>=self.frame_size:
-                    self._Process_frame( buffer )
+                    self._Process_frame( utc, buffer_raw, buffer_cut )
                     self.num_samples += buffer_len
                     buffer_len = 0
             self.frame_buffer_len = buffer_len
         except:
             logger.exception(f"")
 
-    def _Process_frame(self, frame:np.ndarray ) ->bool:
+    def _Process_frame(self, utc:float, frame_raw:np.ndarray, frame:np.ndarray ) ->bool:
         try:
+            if frame is None:
+                return
+
             num_samples = self.num_samples
             # vadカウンタ                
             is_speech:float = self.silerovad.is_speech( frame )
@@ -187,6 +200,7 @@ class AudioToSegmentSileroVAD:
             energy = rms_energy(frame, sr=self.sample_rate )
             #
             self.seg_buffer.append(frame)
+            self.raw_buffer.append(frame_raw)
             self.hists.add( frame.max(), frame.min(), self.rec, is_speech, is_speech, energy, zc, 0.0 )
 
             if self._mute:
@@ -223,17 +237,16 @@ class AudioToSegmentSileroVAD:
                         self.stt_data = None
                         self.rec=0
                         self.silent_start = end_pos
-                        self._wave_end()
 
                     elif self.stt_data.typ==SttData.PreSegment:
                         # 作り直し
-                        self.stt_data = SttData( SttData.Segment, self.stt_data.start, 0, self.sample_rate )
+                        self.stt_data = SttData( SttData.Segment, utc, self.stt_data.start, 0, self.sample_rate )
 
                     else:
                         self.rec_start = end_pos
                         # print(f"rec split {is_speech} {self.rec_start/self.sample_rate}")
                         logger.debug(f"rec split {is_speech} {self.rec_start/self.sample_rate}")
-                        self.stt_data = SttData( SttData.Segment, self.rec_start, 0, self.sample_rate )
+                        self.stt_data = SttData( SttData.Segment, utc, self.rec_start, 0, self.sample_rate )
                         self.last_down.remove_below_pos(end_pos)
                         self.prefed = False
 
@@ -250,7 +263,6 @@ class AudioToSegmentSileroVAD:
                             # FFTでも人の声っぽいのでセグメントとして認定
                             print( f"segment start voice/audio {var}" )
                             self.rec = 2
-                            self._wave_start()
                             # print(f"rec start {self.seg_buffer.get_pos()} {is_speech}")
                             # 直全のパルスをマージする
                             base = self.rec_start
@@ -276,7 +288,7 @@ class AudioToSegmentSileroVAD:
                             self.rec_start = max( 0, self.rec_start - (self.frame_size * sz ))
                             self.last_down.clear()
                             self.prefed = False
-                            self.stt_data = SttData( SttData.Segment, self.rec_start, 0, self.sample_rate )
+                            self.stt_data = SttData( SttData.Segment, utc, self.rec_start, 0, self.sample_rate )
                         else:
                             print( f"ignore pulse voice/audio {var}" )
                 else:
@@ -295,10 +307,9 @@ class AudioToSegmentSileroVAD:
 
                 else:
                     # 音声じゃない
-                    self._wave_close() # ファイル保存終了
                     # 無音通知処理
                     if self.silent_start>0 and (self.seg_buffer.get_pos() - self.silent_start)>self.max_silent_length:
-                        stt_data = SttData( SttData.Term, self.silent_start, self.silent_start, self.sample_rate )
+                        stt_data = SttData( SttData.Term, utc, self.silent_start, self.silent_start, self.sample_rate )
                         self.silent_start = 0
                         if self.callback is None:
                             self.dict_list.append( stt_data )
@@ -309,7 +320,7 @@ class AudioToSegmentSileroVAD:
                 self.last_dump = num_samples+len(frame)
                 ed = self.seg_buffer.get_pos()
                 st = ed - self.seg_buffer.capacity
-                dmp:SttData = SttData( SttData.Dump, st, ed, self.sample_rate )
+                dmp:SttData = SttData( SttData.Dump, utc, st, ed, self.sample_rate )
                 self._flush( dmp, ed )
         except:
             logger.exception(f"")
@@ -337,104 +348,3 @@ class AudioToSegmentSileroVAD:
         if self.rec:
             end_pos = self.seg_buffer.get_pos()
             self._flush(self.stt_data,end_pos)
-            self.wave_close()
-
-    def _wave_start(self):
-        if self.wave_dir is not None:
-            t:Thread = Thread( name='save', target=self._th_wave_start, daemon=True )
-            t.start()
-
-    def _wave_end(self):
-        if self.wave_dir is not None:
-            t:Thread = Thread( name='save', target=self._th_wave_start, daemon=True )
-            t.start()
-
-    def _th_wave_start(self):
-        ws = None
-        log1=0
-        log2=0
-        with self.wave_lock:
-            if self.save_1<0:
-                x:int = self.seg_buffer.offset
-                data:np.ndarray = self.seg_buffer.to_numpy()
-                self.save_1 = self.seg_buffer.get_pos()
-                log1 = self.save_1 - len(data)
-                log2 = self.save_1
-                # 現在時刻のタイムスタンプを取得
-                current_time = time.time() - (len(data)/self.sample_rate)
-                # タイムスタンプをローカルタイムに変換して、yyyymmdd_hhmmss のフォーマットで文字列を作成
-                filename = time.strftime("audio_%Y%m%d_%H%M%S.wav", time.localtime(current_time) )
-            else:
-                x:int = self.seg_buffer.to_index( self.save_1 )
-                data:np.ndarray = self.seg_buffer.to_numpy( start=x )
-                self.save_1 = self.seg_buffer.get_pos()
-                log1 = self.save_1 - len(data)
-                log2 = self.save_1
-                for s in range(10):
-                    ws = self.wave_stream
-                    if ws is not None:
-                        break
-                    self.wave_lock.wait(1.0)
-                if ws is None:
-                    logger.error("can not get wave stream")
-                    return
-        if ws is None:
-            try:
-                logger.info(f"open wave file {filename}")
-                print( f"[WAV]open {filename}")
-                filepath = os.path.join( self.wave_dir, filename )
-                ws = wave.open( filepath, 'wb')
-                ws.setnchannels(1)  # モノラル
-                ws.setsampwidth(2)  # サンプル幅（バイト数）
-                ws.setframerate(self.sample_rate)  # サンプリングレート
-                with self.wave_lock:
-                    self.wave_stream = ws
-            except:
-                logger.exception("can not save wave")
-                with self.wave_lock:
-                    self.wave_dir = None
-                    self.save_1 = -1
-                    self.wave_stream = None
-                    return
-        try:
-            print( f"[WAV]write [{log1}:{log2}]")
-            data = data * 32767.0
-            data = data.astype(np.int16).tobytes()
-            ws.writeframes(data)
-        except:
-            logger.exception("can not save wave")
-            with self.wave_lock:
-                self.wave_dir = None
-                self.save_1 = -1
-                self.wave_stream = None
-
-    def _wave_close(self):
-        if self.wave_dir is None:
-            return
-        with self.wave_lock:
-            if self.save_1<0:
-                return
-            aa = self.seg_buffer.get_pos() - self.save_1
-            if aa<int(self.seg_buffer.capacity*0.5):
-                return
-            x:int = self.seg_buffer.to_index( self.save_1 )
-            data:np.ndarray = self.seg_buffer.to_numpy( start=x )
-            log2 = self.seg_buffer.get_pos()
-            ws = self.wave_stream
-            self.save_1 = -1
-            self.wave_stream = None
-            t:Thread = Thread( name='save', target=self._th_wave_close, args=(ws,data,log2), daemon=True )
-            t.start()
-
-    def _th_wave_close(self, ws, data, log2):
-        try:
-            log1 = log2 - len(data)
-            print( f"[WAV]write [{log1}:{log2}]")
-            data = data * 32767.0
-            data = data.astype(np.int16).tobytes()
-            ws.writeframes(data)
-            print( f"[WAV]close")
-            ws.close()
-            logger.info( "wave file closed" )
-        except:
-            logger.exception("can not save wave")

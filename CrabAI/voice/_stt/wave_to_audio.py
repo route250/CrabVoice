@@ -87,7 +87,8 @@ class wave_to_audio:
                     wa = call_time - time.time()
                     if wait and wa>0:
                         time.sleep( wa )
-                    self.callback( audio_f32 )
+                    self.callback( 0.0, audio_f32 )
+                self.callback( 0.0, None )
         except:
             logger.exception(f"filename:{self.filename}")
         finally:

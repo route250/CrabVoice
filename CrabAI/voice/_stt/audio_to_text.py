@@ -131,7 +131,7 @@ class AudioToText:
                 elif SttData.Voice == stt_data.typ or SttData.PreVoice == stt_data.typ:
                     if self.speech_state!=2:
                         self.speech_state=2
-                        self.callback( SttData( SttData.Start, stt_data.start, stt_data.start, stt_data.sample_rate, seq=stt_data.seq) )
+                        self.callback( SttData( SttData.Start, stt_data.utc, stt_data.start, stt_data.start, stt_data.sample_rate, seq=stt_data.seq) )
                     audio = stt_data.audio
                     if len(audio)>0:
                         t0 = time.time()
