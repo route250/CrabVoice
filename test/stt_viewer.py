@@ -14,6 +14,7 @@ import sys,os
 sys.path.append(os.getcwd())
 from CrabAI.voice._stt.audio_to_text import SttData
 from CrabAI.voice.voice_utils import audio_to_wave_bytes, audio_to_wave
+from stt_data_plot import SttDataPlotter
 
 def lowpass(x, samplerate, fpass, fstop, gpass, gstop):
     fn = samplerate / 2   #ナイキスト周波数
@@ -89,18 +90,11 @@ class SttDataViewer(tk.Tk):
         self.tree.pack(fill=tk.BOTH, expand=True)
 
         # 音声波形グラフ
-        self.figure = plt.Figure(figsize=(6,4), dpi=100)
-        self.canvas = FigureCanvasTkAgg(self.figure, self)
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        self.plot1 = SttDataPlotter(self)
+        self.plot1.pack(fill=tk.BOTH,expand=True)
 
         # 選択イベントのバインド
         self.tree.bind('<<TreeviewSelect>>', self.on_item_select)
-
-        self.ax1 = None
-        self.ax2 = None
-        self.plot_scale = 1.0
-        self.plot_xlim = None
-        self._press_x = None
 
     def load_file(self):
         try:
@@ -145,118 +139,9 @@ class SttDataViewer(tk.Tk):
             print(f"ロードできません: {file_path}")
         self.plot(stt_data)
 
-    def _on_mouse_wheel(self, event):
-        # 拡大縮小の基準スケール
-        # マウスイベントの位置を取得（データ座標）
-        if  event.xdata is None:
-            return  # データ座標が取得できない場合は何もしない
-
-        if event.button == 'up':
-            # 拡大
-            self.plot_scale = min(10,self.plot_scale+0.2)
-        elif event.button == 'down':
-            # 縮小
-            self.plot_scale = max(1.0, self.plot_scale - 0.2 )
-        else:
-            return  # その他のボタンは無視
-
-        if 0.99<self.plot_scale<1.01:
-            self.plot_scale = 1.0
-            new_xlim = self.plot_xlim
-        else:
-            # 現在のズームレベルに基づいて新しい表示範囲を計算
-            cur_xlim = self.ax1.get_xlim()
-            # カーソルの相対位置
-            x_rate = (cur_xlim[1]-event.xdata)/(cur_xlim[1]-cur_xlim[0])
-
-            scaled_range = (self.plot_xlim[1]-self.plot_xlim[0])/self.plot_scale
-            xmax = event.xdata + scaled_range * x_rate
-            xmin = xmax - scaled_range
-            if xmin<self.plot_xlim[0]:
-                xmin = self.plot_xlim[0]
-                xmax = xmin + scaled_range
-            elif xmax>self.plot_xlim[1]:
-                xmax = self.plot_xlim[1]
-                xmin = xmax - scaled_range
-            new_xlim = [xmin,xmax]
-
-        # 両方の軸にズーム操作を適用
-        self.ax1.set_xlim(new_xlim)
-        self.ax2.set_xlim(new_xlim)
-
-        self.canvas.draw()
-
-    def _on_press(self, event):
-        self._press_x = event.xdata
-
-    def _on_release(self, event):
-        self._press_x = None
-
-    def _on_motion(self, event):
-        if self._press_x is None or event.xdata is None or self.plot_scale<=1.0:
-            return
-        xmin,xmax = self.ax1.get_xlim()
-        width = xmax-xmin
-        dx = event.xdata - self._press_x
-        if dx>0:
-            xmin = xmin - dx
-            if xmin < self.plot_xlim[0]:
-                xmin = self.plot_xlim[0]
-            xmax = xmin + width
-        elif dx<0:
-            xmax = xmax - dx
-            if xmax > self.plot_xlim[1]:
-                xmax = self.plot_xlim[1]
-            xmin = xmax - width
-        else:
-            return
-
-        self.ax1.set_xlim(xmin,xmax)
-        self.ax2.set_xlim(xmin,xmax)
-        self.canvas.draw()
-
     def plot(self,stt_data:SttData):
-        self.figure.clear()
-        if stt_data is not None and stt_data.hists is not None:
-            # 音声波形を描画
-            hists:pd.DataFrame = stt_data.hists
-            hi:np.ndarray = hists['hi']
-            lo:np.ndarray = hists['lo']
-            co:np.ndarray = hists['color']
-            vad:np.ndarray = hists['vad1']
-
-            frames = stt_data.end - stt_data.start
-            chunks = len(hi)
-            chunk_size = frames//chunks
-
-            # 上下2つのサブプロットを作成
-            self.ax1 = self.figure.add_subplot(2, 1, 1)  # 上のサブプロット
-            self.ax2 = self.figure.add_subplot(2, 1, 2)  # 下のサブプロット
-            ax3 = self.ax2.twinx()
-
-            x_sec = [ round((stt_data.start + (i*chunk_size))/stt_data.sample_rate,3) for i in range(len(hi)) ]
-            self.plot_xlim = (x_sec[0],x_sec[-1])
-
-            self.ax1.fill_between( x_sec, lo, hi, color='gray')
-            self.ax1.set_ylim( ymin=-1.0, ymax=1.0)
-            self.ax1.grid(True)
-
-            self.ax2.plot( x_sec, vad, color='r', label='vad' )
-            self.ax2.set_ylim( ymin=0.0, ymax=1.5 )
-            self.ax2.grid(True)
-            ax3.step( x_sec, co, where='post', color='b', label='color' )
-            ax3.set_ylim( ymin=0.0, ymax=3.0 )
-
-            h2, l2 = self.ax2.get_legend_handles_labels()
-            h3, l3 = ax3.get_legend_handles_labels()
-            self.ax2.legend( h2+h3, l2+l3, loc='upper right')
-
-            self.canvas.mpl_connect('scroll_event', self._on_mouse_wheel)
-            self.canvas.mpl_connect('button_press_event', self._on_press)
-            self.canvas.mpl_connect('button_release_event', self._on_release)
-            self.canvas.mpl_connect('motion_notify_event', self._on_motion)
-
-            self.canvas.draw()
+        # GraphPlotterを使用してグラフを描画
+        self.plot1.plot(stt_data)
 
     def play_audio(self):
         selected_item = self.tree.selection()[0]  # 選択されたアイテムID
@@ -266,7 +151,7 @@ class SttDataViewer(tk.Tk):
             stt_data:SttData = SttData.load(file_path)
         except:
             print(f"ロードできません: {file_path}")
-        st_sec, ed_sec = self.ax1.get_xlim()
+        st_sec, ed_sec = self.plot1.get_xlim()
         if stt_data is not None and stt_data.audio is not None:
             st = max(0, int(st_sec * stt_data.sample_rate) - stt_data.start)
             ed = min( len(stt_data.audio), int(ed_sec * stt_data.sample_rate) - stt_data.start )
@@ -286,7 +171,7 @@ class SttDataViewer(tk.Tk):
             stt_data:SttData = SttData.load(file_path)
         except:
             print(f"ロードできません: {file_path}")
-        st_sec, ed_sec = self.ax1.get_xlim()
+        st_sec, ed_sec = self.plot1.get_xlim()
         if stt_data is not None and stt_data.audio is not None:
             file_name, _ = os.path.splitext(os.path.basename(file_path))
             files = [('Wave Files', '*.wav'),('All Files', '*.*')]  
@@ -312,7 +197,7 @@ class SttDataViewer(tk.Tk):
             print("ファイルが選択されていません")
             return
         # FFTの実行
-        st_sec, ed_sec = self.ax1.get_xlim()
+        st_sec, ed_sec = self.plot1.get_xlim()
         st = max(0, int(st_sec * stt_data.sample_rate) - stt_data.start)
         ed = min( len(stt_data.audio), int(ed_sec * stt_data.sample_rate) - stt_data.start )
         audio_raw:np.ndarray = stt_data.audio[st:ed]

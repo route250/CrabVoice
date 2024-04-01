@@ -195,7 +195,7 @@ class AudioToVoice:
                 elif SttData.Term==stt_data.typ:
                     self._PrioritizedCallback(stt_data,False)
                 elif SttData.Dump==stt_data.typ:
-                    self._PrioritizedCallback(stt_data,True)
+                    self._PrioritizedCallback(stt_data,False)
                     self._save_audio(stt_data)
                 else:
                     self._PrioritizedCallback(stt_data,True)

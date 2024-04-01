@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 logger = getLogger('SttData')
-
+   
 def _to_npy_str(value) -> np.ndarray:
     if value is None:
         return None
@@ -15,13 +15,19 @@ def _from_npy_str(npy: np.ndarray) -> str:
     return npy.tobytes().decode('utf-8')
 
 def _to_npy_i16(value) ->np.ndarray:
+    if not isinstance(value,(int,float)):
+        return None
     return np.array([value]).astype(np.int16)
 
 def _to_npy_i64(value) ->np.ndarray:
+    if not isinstance(value,(int,float)):
+        return None
     return np.array([value]).astype(np.int64)
 
 def _to_npy_f32(value) ->np.ndarray:
-    return np.array([value]).astype(np.float)
+    if not isinstance(value,(int,float)):
+        return None
+    return np.array([value]).astype(np.float32)
 
 def _from_npy_int( npy:np.ndarray, default=0 ) ->int:
     try:

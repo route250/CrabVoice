@@ -319,7 +319,7 @@ class AudioToSegmentSileroVAD:
             if (num_samples-self.last_dump)+len(frame)*2>self.seg_buffer.capacity:
                 self.last_dump = num_samples+len(frame)
                 ed = self.seg_buffer.get_pos()
-                st = ed - self.seg_buffer.capacity
+                st = max(0, ed - self.seg_buffer.capacity)
                 dmp:SttData = SttData( SttData.Dump, utc, st, ed, self.sample_rate )
                 self._flush( dmp, ed )
         except:
@@ -333,6 +333,8 @@ class AudioToSegmentSileroVAD:
             e = self.seg_buffer.to_index( end_pos )
             audio = self.seg_buffer.to_numpy( b, e )
             stt_data.audio = audio
+            raw = self.raw_buffer.to_numpy( b, e )
+            stt_data.raw = raw
 
             b = self.hists.to_index( start_pos // self.frame_size )
             e = self.hists.to_index( end_pos//self.frame_size )
