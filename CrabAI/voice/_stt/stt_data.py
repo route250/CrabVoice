@@ -1,4 +1,5 @@
 from logging import getLogger
+from zipfile import BadZipFile
 import numpy as np
 import pandas as pd
 
@@ -55,7 +56,7 @@ class SttData:
     Term:int=100
     Dump:int=700
 
-    def __init__(self, typ:int, utc:float, start:int, end:int, sample_rate:int, raw=None, audio=None, hists=None, content:str=None, tag:str=None, seq=0):
+    def __init__(self, typ:int, utc:float, start:int, end:int, sample_rate:int, raw=None, audio=None, hists=None, content:str=None, tag:str=None, seq=0, filepath=None):
         self.utc:float = float(utc)
         self.seq:int = int(seq)
         self.typ:int = int(typ)
@@ -67,6 +68,7 @@ class SttData:
         self.hists:pd.DataFrame = hists
         self.content:str = content
         self.tag:str = tag
+        self.filepath:str = filepath
 
     @staticmethod
     def type_to_str(typ:int):
@@ -150,6 +152,8 @@ class SttData:
             hists_data = {col: data[col] for col in hists_columns}
             hists = pd.DataFrame(hists_data) if len(hists_data)>0 else None
             
-            return SttData(typ=typ, utc=utc, start=start, end=end, sample_rate=sample_rate, audio=audio, raw=raw, hists=hists, content=content, tag=tag, seq=seq)
+            return SttData(typ=typ, utc=utc, start=start, end=end, sample_rate=sample_rate, audio=audio, raw=raw, hists=hists, content=content, tag=tag, seq=seq, filepath=path)
+        except BadZipFile as ex:
+            logger.error( f"can not load from {path}: {str(ex)}")
         except:
             logger.exception(f'can not load from {path}')

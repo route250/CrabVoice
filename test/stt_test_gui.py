@@ -1,5 +1,8 @@
 
 from io import BytesIO
+import traceback
+from threading import Thread
+from queue import Queue, Empty
 import tkinter as tk
 from tkinter import filedialog, ttk
 import matplotlib.pyplot as plt
@@ -12,7 +15,7 @@ import sys,os
 sys.path.append(os.getcwd())
 from CrabAI.voice._stt.audio_to_text import AudioToText, SttData
 from CrabAI.voice.voice_utils import audio_to_wave_bytes
-from stt_data_plot import SttDataPlotter
+from stt_data_plot import SttDataTable, SttDataPlotter
 
 # 音声解析関数
 def analysis_audio(wavefilename, callback):
@@ -25,8 +28,13 @@ class Application(tk.Tk):
         super().__init__()
         self.title('音声解析GUI')
         self.geometry('800x600')
-        self.results = {}
         self.create_widgets()
+
+        self._ev_queue = Queue()
+        self.running = True
+        self.after_id=None
+        self.protocol("WM_DELETE_WINDOW", self.on_close)  # ウィンドウが閉じられたときのイベントハンドラを設定
+        self._idle_loop()
 
     def create_widgets(self):
 
@@ -55,25 +63,32 @@ class Application(tk.Tk):
         self.stop_button.pack(side=tk.LEFT)
 
         # 結果表示テーブル
-        self.tree = ttk.Treeview(self, columns=('utc','start', 'end', 'sec', 'content'), show='headings')
-        self.tree.heading('utc', text='utc')
-        self.tree.heading('start', text='開始フレーム')
-        self.tree.heading('end', text='終了フレーム')
-        self.tree.heading('sec', text='長さ')
-        self.tree.heading('content', text='結果テキスト')
-        # カラム幅の設定
-        self.tree.column('utc', width=30)
-        self.tree.column('start', width=30)
-        self.tree.column('end', width=30)
-        self.tree.column('sec', width=30)
-        self.tree.pack(fill=tk.BOTH, expand=True)
+        self.table = SttDataTable(self)
+        self.table.bind( self.on_item_select )
+        self.table.pack(fill=tk.BOTH, expand=True)
 
         # 音声波形グラフ
         self.plot1 = SttDataPlotter(self)
         self.plot1.pack(fill=tk.BOTH, expand=True)
 
-        # 選択イベントのバインド
-        self.tree.bind('<<TreeviewSelect>>', self.on_item_select)
+    def on_close(self):
+        self.running = False  # runningフラグをFalseに設定してループを停止
+        try:
+            self.after_cancel(self.after_id)
+        except:
+            pass
+        self.destroy()  # ウィンドウを閉じる
+
+    def _idle_loop(self):
+        if self.running:
+            try:
+                task = self._ev_queue.get_nowait()
+                task()
+            except Empty:
+                pass
+            except:
+                traceback.print_exc()
+            self.after_id = self.after( 200, self._idle_loop )
 
     def load_file(self):
         self.filename = filedialog.askopenfilename(filetypes=[("WAV files", "*.wav")])
@@ -83,29 +98,22 @@ class Application(tk.Tk):
     def run_analysis(self):
         if hasattr(self, 'filename'):
             self.plot(None)
-            self.results={}
-            for item in self.tree.get_children():
-                self.tree.delete(item)
-            analysis_audio(self.filename, self.update_result)
+            self.table.clear()
+            t = Thread( target=analysis_audio, args=(self.filename,self.update_result), daemon=True )
+            t.start()
         else:
             print("ファイルが選択されていません")
 
     def update_result(self, stt_data:SttData):
-        if stt_data.typ != SttData.Text and stt_data.typ != SttData.Dump:
-            return
-        row_id = len(self.results)  # 現在の行数をキーとする
-        self.results[row_id] = stt_data  # 結果を辞書に追加
-        # 結果をテーブルに表示
-        utc = stt_data.utc
-        sec = (stt_data.end-stt_data.start)/stt_data.sample_rate
-        self.tree.insert('', tk.END, values=(utc, stt_data.start, stt_data.end, sec, stt_data.content))
-        self.plot(stt_data)
+        self._ev_queue.put( lambda stt_data=stt_data,file_path=None: self.table.add(stt_data, file_path=file_path) )
+        #self.table.add(stt_data)
+        # self.plot(stt_data)
 
-    def on_item_select(self, event):
-        selected_item = self.tree.selection()[0]  # 選択されたアイテムID
-        row_id = int(selected_item.split('I')[1], 16) - 1  # 行番号を取得
-        stt_data = self.results.get(row_id)  # 対応するSTTDataオブジェクトを取得
-        self.plot(stt_data)
+    def on_item_select(self, stt_data:SttData ):
+        try:
+            self.plot(stt_data)
+        except:
+            traceback.print_exc()
 
     def plot(self,stt_data:SttData):
         self.plot1.plot(stt_data)
@@ -117,9 +125,7 @@ class Application(tk.Tk):
         self.play_audiox(True)
 
     def play_audiox(self,b):
-        selected_item = self.tree.selection()[0]  # 選択されたアイテムID
-        row_id = int(selected_item.split('I')[1], 16) - 1  # 行番号を取得
-        stt_data:SttData = self.results.get(row_id)  # 対応するSTTDataオブジェクトを取得
+        stt_data:SttData = self.table.selected()
         if stt_data is None:
             print("stt_data is None")
             return
