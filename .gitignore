@@ -5,7 +5,7 @@
 /tmp
 /old
 /requirements.txt
-/testData
+/testData/tmp
 *.log
 *.pyc
 *.log
