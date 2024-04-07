@@ -223,7 +223,7 @@ def fft_audio_signal( raw_audio:np.ndarray, sampling_rate:int ):
     abs_fft = abs_fft * correction_factor
     return freqs, abs_fft
 
-def _voice_rate( freqs, abs_fft, *, cut:float=60, low:float=100.0, high:float=1000.0 ):
+def _voice_rate( freqs, abs_fft, *, cut:float=100, low:float=100.0, high:float=1000.0 ):
     sum_total = 0
     sum_voice = 0
     for freq, amp in zip( freqs, abs_fft ):

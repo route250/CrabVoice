@@ -19,7 +19,8 @@ logger = getLogger("AudioToText")
 
 class AudioToText:
 
-    def __init__(self, *, model:str=None, callback, sample_rate:int=16000, wave_dir=None):
+    def __init__(self, *, model:str=None, callback, sample_rate:int=16000, save_path=None):
+        self._run=False
         self.model=model
         self.sample_rate = sample_rate if isinstance(sample_rate,int) else 16000
         self._state:int = 0
@@ -27,7 +28,7 @@ class AudioToText:
         self._queue:Queue = Queue()
         self._thread:Thread = None
         self.callback = callback
-        self.audio_to_voice:AudioToVoice = AudioToVoice( callback=self._fn_callback, wave_dir=wave_dir )
+        self.audio_to_voice:AudioToVoice = AudioToVoice( callback=self._fn_callback, save_path=save_path )
         self.whisper_model:WhisperModel = None
         self.model_size = "large-v3"
         self.w2a:wave_to_audio = None
@@ -103,6 +104,7 @@ class AudioToText:
                 self._state = 2
             logger.info("start audio to text")
             self._thread = Thread( target=self._fn_process, name="AudioToText", daemon=True)
+            self._run=True
             self._thread.start()
             self.audio_to_voice.start()
             if self.w2a is not None:
@@ -118,7 +120,7 @@ class AudioToText:
     def _fn_process(self):
         try:
             logger.info("start audio to text")
-            while True:
+            while self._run:
                 try:
                     stt_data:SttData = self._queue.get( timeout=1.0 )
                 except Empty:
@@ -170,6 +172,13 @@ class AudioToText:
         self.audio_to_voice.set_pause(b)
 
     def stop(self):
+        self._run=False
+        try:
+            if self._thread is not None:
+                logger.info("wait for thread")
+                self._thread.join(timeout=2.0)
+        except:
+            pass
         try:
             logger.info("stop audio to text")
         except:

@@ -17,12 +17,6 @@ from CrabAI.voice._stt.audio_to_text import AudioToText, SttData
 from CrabAI.voice.voice_utils import audio_to_wave_bytes
 from stt_data_plot import SttDataTable, SttDataPlotter
 
-# 音声解析関数
-def analysis_audio(wavefilename, callback):
-    STT:AudioToText = AudioToText( callback=callback )
-    STT.load( filename=wavefilename )
-    STT.start()
-
 class Application(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -35,6 +29,8 @@ class Application(tk.Tk):
         self.after_id=None
         self.protocol("WM_DELETE_WINDOW", self.on_close)  # ウィンドウが閉じられたときのイベントハンドラを設定
         self._idle_loop()
+
+        self.stt=None
 
     def create_widgets(self):
 
@@ -74,6 +70,10 @@ class Application(tk.Tk):
     def on_close(self):
         self.running = False  # runningフラグをFalseに設定してループを停止
         try:
+            self.stt.stop()
+        except:
+            pass
+        try:
             self.after_cancel(self.after_id)
         except:
             pass
@@ -91,15 +91,21 @@ class Application(tk.Tk):
             self.after_id = self.after( 200, self._idle_loop )
 
     def load_file(self):
-        self.filename = filedialog.askopenfilename(filetypes=[("WAV files", "*.wav")])
+        self.filename = filedialog.askopenfilename(filetypes=[("WAV files", "*.wav"),("Stt files", "*.npz")])
         if self.filename:
             print(f"ファイルが選択されました: {self.filename}")
+
+    # 音声解析関数
+    def analysis_audio(self):
+        self.stt:AudioToText = AudioToText( callback=self.update_result )
+        self.stt.load( filename=self.filename )
+        self.stt.start()
 
     def run_analysis(self):
         if hasattr(self, 'filename'):
             self.plot(None)
             self.table.clear()
-            t = Thread( target=analysis_audio, args=(self.filename,self.update_result), daemon=True )
+            t = Thread( target=self.analysis_audio, daemon=True )
             t.start()
         else:
             print("ファイルが選択されていません")

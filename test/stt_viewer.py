@@ -60,14 +60,20 @@ class SttDataViewer(tk.Tk):
         self.save_button = tk.Button(self.button_frame, text='Save', command=self.save_audio)
         self.save_button.pack(side=tk.LEFT)
 
+        self.main_frame = ttk.PanedWindow( self )
+        self.main_frame.pack( fill=tk.BOTH, expand=True )
+
         # 結果表示テーブル
-        self.table = SttDataTable(self)
+        self.table = SttDataTable(self.main_frame)
         self.table.bind( self.on_item_select )
         self.table.pack(fill=tk.BOTH, expand=True)
 
         # 音声波形グラフ
-        self.plot1 = SttDataPlotter(self)
+        self.plot1 = SttDataPlotter(self.main_frame)
         self.plot1.pack(fill=tk.BOTH,expand=True)
+
+        self.main_frame.add(self.table)
+        self.main_frame.add(self.plot1)
 
     def on_close(self):
         self.running = False  # runningフラグをFalseに設定してループを停止
@@ -76,6 +82,10 @@ class SttDataViewer(tk.Tk):
         except:
             pass
         self.destroy()  # ウィンドウを閉じる
+        try:
+            pygame.mixer.quit()
+        except:
+            pass
 
     def _idle_loop(self):
         if self.running:
@@ -109,7 +119,7 @@ class SttDataViewer(tk.Tk):
                         stt_data:SttData = SttData.load(file_path)
                         if stt_data is not None:
                             if stt_data.typ == SttData.Text or stt_data.typ == SttData.Dump:
-                                max_vad = max(stt_data['vad1'])
+                                max_vad = max(stt_data['vad'])
                                 if max_vad>0.2:
                                     self._ev_queue.put( lambda stt_data=stt_data,file_path=file_path: self.table.add(stt_data, file_path=file_path) )
                         else:

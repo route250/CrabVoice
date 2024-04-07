@@ -21,24 +21,69 @@ def rms_energy( audio, sr=16000 ):
     e = librosa.feature.rms( y=audio, hop_length=len(audio))[0][0]
     return e
 
+
+def find_lowest_vad_at_slope_increase( data:np.ndarray, window_size):
+    if not isinstance(data,np.ndarray):
+        raise Exception("not np.ndarray")
+    if len(data.shape)!=1:
+        raise Exception("not np.ndarray")
+
+    # 移動平均の計算
+    conv_kernel = np.ones(window_size) / window_size
+    moving_averages = np.convolve(data, conv_kernel, mode='valid')
+    
+    # 傾きの計算
+    slopes = np.diff(moving_averages)
+    
+    # 傾きがプラスに変化する位置の特定
+    change_points = np.where((slopes[:-1] <= 0) & (slopes[1:] > 0))[0] + 1
+    if len(change_points)==0:
+        return None
+
+    # VAD評価値が最も低い点の特定
+    lowest_vad = np.inf
+    lowest_idx = None
+    for index in change_points:
+        start = max(0, index - window_size)
+        end = min(index + window_size, len(data) - 1)
+        idx = start + np.argmin(data[start:end+1])
+        var = data[idx]
+        if var < lowest_vad:
+            lowest_vad = var
+            lowest_idx = idx
+    return lowest_idx
+
+NON_VOICE=0
+PREFIX=1
+VPULSE=3
+POST_VPULSE=2
+PRE_VOICE=8
+VOICE=9
+POST_VOICE=7
+TERM=4
+TPULSE=6
+POST_TPULSE=5
+
 class AudioToSegmentSileroVAD:
     """音声の区切りを検出する"""
-    def __init__(self, *, callback, sample_rate:int=16000, wave_dir=None):
+    def __init__(self, *, callback, sample_rate:int=16000 ):
         # 設定
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
-        self.pick_tirg:float = 0.3
-        self.up_tirg:float = 0.45
-        self.dn_trig:float = 0.2
-        self.ignore_length:int = int( 0.1 * self.sample_rate )
-        self.min_speech_length:int = int( 0.8 * self.sample_rate )
-        self.max_speech_length:int = int( 4.8 * self.sample_rate )
-        self.max_silent_length:int = int( 0.8 * self.sample_rate )
-        self.prefech_length:int = int( 1.6 * self.sample_rate )
+        self.pick_trig:float = 0.4
+        self.up_trig:float = 0.5
+        self.dn_trig:float = 0.45
+        self.ignore_length:int = int( 0.1 * self.sample_rate ) # 発言とみなす最低時間
+        self.min_speech_length:int = int( 0.6 * self.sample_rate )
+        self.max_speech_length:int = int( 4.0 * self.sample_rate )
+        self.post_speech_length:int = int( 0.4 * self.sample_rate ) 
+        self.max_silent_length:int = int( 0.8 * self.sample_rate )  # 発言終了とする無音時間
+        self.prefech_length:int = int( 1.6 * self.sample_rate ) # 発言の途中で先行通知する時間
+        self.var1 = 0.3 # 発言とみなすFFTレート
         #
         self._mute:bool = False
         self.callback = callback
         self.dict_list:list[dict] = []
-        # フレーム分割用のバッファ
+        # 音声データを処理するフレームサイズに分割する
         self.frame_msec:int = 10  # 10ms,20ms,30ms
         self.frame_size:int = 512 # int( (self.sample_rate * self.frame_msec) / 1000 )  # 10ms,20ms,30ms
         self.frame_buffer_len:int = 0
@@ -46,7 +91,7 @@ class AudioToSegmentSileroVAD:
         self.frame_buffer_cut:np.ndarray = np.zeros( self.frame_size, dtype=np.float32)
         # 
         self.num_samples:int = 0
-        #
+        self.last_dump:int = 0
         self.seg_buffer:RingBuffer = RingBuffer( self.sample_rate * 30, dtype=np.float32 )
         self.raw_buffer:RingBuffer = RingBuffer( self.seg_buffer.capacity, dtype=np.float32 )
         self.hists:Hists = Hists( self.seg_buffer.capacity )
@@ -54,30 +99,17 @@ class AudioToSegmentSileroVAD:
         # SileroVAD
         self.silerovad:SileroVAD = SileroVAD( window_size_samples=self.frame_size, sampling_rate=self.sample_rate )
         #
-        self.var1 = 0.3
         # 判定用 カウンタとフラグ
-        self.rec:int = 0
+        self.rec:int = NON_VOICE
+        self.pos:list[int] = [0] * 10
         self.rec_start:int = 0
+        self.rec_end:int = 0
         self.silent_start:int = 0
-        self.stt_data:SttData = None
         self.ignore_list:RingBuffer = RingBuffer( 10, dtype=np.int64)
         # 処理用
         self.last_down:LowPos = LowPos()
         # プリフェッチ用フラグ
         self.prefed:bool=False
-        # wave保存用
-        self.wave_dir:str = wave_dir
-        if wave_dir is not None:
-            if not os.path.exists(wave_dir):
-                logger.info(f"crete {wave_dir}")
-                os.makedirs(wave_dir)
-            elif not os.path.isdir(wave_dir):
-                raise IOError(f"is not directory {wave_dir}")
-        self.wave_lock:Condition = Condition()
-        self.wave_stream = None
-        self.save_1:int = -1
-        self.save_2:int = -1
-        self.last_dump:int = 0
         # 人の声のフィルタリング（バンドパスフィルタ）
         # self.sos = scipy.signal.butter( 4, [100, 2000], 'bandpass', fs=self.sample_rate, output='sos')
         # ハイパスフィルタ
@@ -89,15 +121,17 @@ class AudioToSegmentSileroVAD:
         wp = fpass / fn  #ナイキスト周波数で通過域端周波数を正規化
         ws = fstop / fn  #ナイキスト周波数で阻止域端周波数を正規化
         N, Wn = signal.buttord(wp, ws, gpass, gstop)  #オーダーとバターワースの正規化周波数を計算
-        self.b, self.a = signal.butter(N, Wn, "high")   #フィルタ伝達関数の分子と分母を計算
+        # self.b, self.a = signal.butter(N, Wn, "high")   #フィルタ伝達関数の分子と分母を計算
+        self.sos = signal.butter(N, Wn, "high", output='sos')   #フィルタ伝達関数の分子と分母を計算
 
     def hipass(self,x):
-        y = signal.filtfilt(self.b, self.a, x)    #信号に対してフィルタをかける
+        #y = signal.filtfilt(self.b, self.a, x) #信号に対してフィルタをかける
+        y = signal.sosfiltfilt( self.sos, x ) #信号に対してフィルタをかける
         return y  
 
     def __getitem__(self,key):
         if 'vad.pick'==key:
-            return self.pick_tirg
+            return self.pick_trig
         elif 'vad.up'==key:
             return self.up_trig
         elif 'vad.dn'==key:
@@ -116,7 +150,7 @@ class AudioToSegmentSileroVAD:
     def __setitem__(self,key,val):
         if 'vad.pick'==key:
             if isinstance(val,(int,float)) and 0<=key<=1:
-                self.pick_tirg = float(key)
+                self.pick_trig = float(key)
         elif 'vad.up'==key:
             if isinstance(val,(int,float)) and 0<=key<=1:
                 self.up_trig = float(key)
@@ -149,16 +183,34 @@ class AudioToSegmentSileroVAD:
     def set_pause(self,b):
         self._mute = b
 
-    def stop(self):
-        pass
+    def stop(self, *, utc:float=0.0):
+        if self.rec>=PRE_VOICE:
+            st_pos = self.pos[VOICE]
+            end_pos = self.seg_buffer.get_pos()
+            print(f"[REC] stop {st_pos} {end_pos}")
+            stt_data = SttData( SttData.Segment, utc, st_pos,end_pos, self.sample_rate )
+            self._flush( stt_data )
+        self.rec = NON_VOICE
+        if self.num_samples>self.last_dump:
+            sz = self.num_samples - self.last_dump
+            ed = self.seg_buffer.get_pos()
+            st = max(0, ed - sz)
+            dmp:SttData = SttData( SttData.Dump, utc, st, ed, self.sample_rate )
+            self._flush( dmp )
+            self.last_dump = self.num_samples
+        self.frame_buffer_len = 0
+        self.num_samples = 0
+        self.last_dump = 0
+        self.seg_buffer.clear()
+        self.raw_buffer.clear()
+        self.hists.clear()
 
     def audio_callback(self, utc:float, raw_audio:np.ndarray, *args ) ->bool:
         """音声データをself.frame_sizeで分割して処理を呼び出す"""
         try:
             if raw_audio is None:
                 # End of stream
-                self._Process_frame( utc, None,None )
-                self.frame_buffer_len = 0
+                self.stop( utc=utc )
                 return
 
             buffer_raw:np.ndarray = self.frame_buffer_raw
@@ -201,133 +253,157 @@ class AudioToSegmentSileroVAD:
             #
             self.seg_buffer.append(frame)
             self.raw_buffer.append(frame_raw)
-            self.hists.add( frame.max(), frame.min(), self.rec, is_speech, is_speech, energy, zc, 0.0 )
+            self.hists.add( frame.max(), frame.min(), self.rec, is_speech, energy, zc, 0.0 )
 
             if self._mute:
-                self.rec=0
+                self.rec=NON_VOICE
                 self.rec_start = 0
-                self.stt_data = None
 
-            if self.rec>=2:
+            end_pos = self.seg_buffer.get_pos()
 
-                if is_speech<self.up_tirg:
-                    self.last_down.push( self.seg_buffer.get_pos(), is_speech )
+            if self.rec==-1:
+                pass
 
-                seg_len = self.seg_buffer.get_pos() - self.rec_start
+            elif self.rec==POST_VOICE:
+                if is_speech>=self.up_trig:
+                    # print(f"[REC] PostVoice->Voice {end_pos} {is_speech}")
+                    self.last_down.push( end_pos, is_speech )
+                    self.rec=VOICE
+                else:
+                    seg_len = end_pos - self.pos[POST_VOICE]
+                    if seg_len>=self.post_speech_length:
+                        # 音声終了処理
+                        print(f"[REC] PostVoice->Term {end_pos} {is_speech}")
+                        stt_data = SttData( SttData.Segment, utc, self.pos[VPULSE],end_pos, self.sample_rate )
+                        self._flush( stt_data )
+                        self.rec = TERM
+                        self.pos[TERM] = end_pos
 
-                end_pos = -1
-                if seg_len>self.max_speech_length:
-                    ignore = int( self.sample_rate * 0.3 )
-                    end_pos = self.last_down.get_posx( self.rec_start + ignore, self.seg_buffer.get_pos() - ignore )
-                    if end_pos<0 and not self.prefed:
-                        # プリフェッチを出す
-                        self.prefed = True
-                        self.stt_data.typ = SttData.PreSegment
-                        end_pos = self.rec_start + self.prefech_length
-                        logger.debug(f"rec prefech {is_speech} {self.rec_start/self.sample_rate}")
-
-                elif seg_len>=self.min_speech_length and is_speech<self.dn_trig:
-                    end_pos = self.seg_buffer.get_pos()
-
-                if end_pos>0:
-                    self._flush( self.stt_data, end_pos)
-
-                    if is_speech<self.dn_trig:
-                        # print(f"rec stop {is_speech} {(split_len-self.rec_start)/self.sample_rate}")
-                        self.stt_data = None
-                        self.rec=0
-                        self.silent_start = end_pos
-
-                    elif self.stt_data.typ==SttData.PreSegment:
-                        # 作り直し
-                        self.stt_data = SttData( SttData.Segment, utc, self.stt_data.start, 0, self.sample_rate )
-
+            elif self.rec==VOICE:
+                if is_speech<self.dn_trig:
+                    print(f"[REC] Voice->PostVoice {end_pos} {is_speech}")
+                    self.rec=POST_VOICE
+                    self.pos[POST_VOICE] = end_pos
+                else:
+                    seg_len = end_pos - self.pos[VOICE]
+                    if seg_len>=self.max_speech_length:
+                        # 分割処理
+                        ignore = int( self.sample_rate * 0.2 )
+                        st = ( self.pos[VOICE] + ignore ) // self.frame_size
+                        ed = ( end_pos - ignore ) // self.frame_size
+                        split_pos = find_lowest_vad_at_slope_increase( self.hists.hist_vad.to_numpy( st, ed ), 5 )
+                        if split_pos>0:
+                            split_pos = (st+split_pos) * self.frame_size
+                            st_sec = self.pos[VOICE]/self.sample_rate
+                            ed_sec = end_pos/self.sample_rate
+                            split_sec = split_pos/self.sample_rate
+                            print(f"[REC] split {is_speech} {st_sec}-{ed_sec} {split_sec} {seg_len/self.sample_rate}(sec)")
+                            stt_data = SttData( SttData.Segment, utc, self.pos[VPULSE],split_pos, self.sample_rate )
+                            self._flush( stt_data )
+                            self.pos[VPULSE] = split_pos
+                            self.pos[VOICE] = split_pos
+                        else:
+                            print(f"[REC] failled to split ")
                     else:
-                        self.rec_start = end_pos
-                        # print(f"rec split {is_speech} {self.rec_start/self.sample_rate}")
-                        logger.debug(f"rec split {is_speech} {self.rec_start/self.sample_rate}")
-                        self.stt_data = SttData( SttData.Segment, utc, self.rec_start, 0, self.sample_rate )
-                        self.last_down.remove_below_pos(end_pos)
+                        if is_speech<self.up_trig:
+                            self.last_down.push( end_pos, is_speech )
+
+            elif self.rec==PRE_VOICE:
+                seg_len = end_pos - self.pos[PRE_VOICE]
+                if seg_len>=self.min_speech_length:
+                    self.rec = VOICE
+                    self.pos[VOICE] = self.pos[PRE_VOICE]
+
+            elif self.rec==VPULSE or self.rec==TPULSE:
+                seg_len = end_pos - self.pos[VPULSE]
+                if seg_len>=self.ignore_length or is_speech>=self.up_trig:
+                    # 音声開始処理をするとこ
+                    tmpbuf = self.seg_buffer.to_numpy( -seg_len )
+                    var = voice_per_audio_rate(tmpbuf, sampling_rate=self.sample_rate)
+                    self.hists.replace_var( var )
+                    if var>self.var1:
+                        # FFTでも人の声っぽいのでセグメントとして認定
+                        print( f"[REC] segment start voice/audio {var}" )
+                        self.rec = PRE_VOICE
+                        self.pos[PRE_VOICE] = self.pos[VPULSE]
+                        # 直全のパルスをマージする
+                        xstart = base = self.pos[VPULSE]
+                        merge_length = int(self.sample_rate*0.2)
+                        max_merge_length = int(self.sample_rate*0.6)
+                        i=len(self.ignore_list)-1
+                        while i>=0:
+                            if base-self.ignore_list[i]>max_merge_length:
+                                break
+                            if xstart-self.ignore_list[i]<=merge_length:
+                                xstart = int(self.ignore_list[i])
+                            i-=1
+                        self.ignore_list.clear()
+                        # 上り勾配をマージする
+                        hists_idx0 = -1*len(self.hists)
+                        while True:
+                            hists_idx = (xstart-end_pos)//self.frame_size-1
+                            hco = self.hists.hist_color[hists_idx]
+                            if hco == NON_VOICE or hco == TERM:
+                                self.hists.hist_color.set(hists_idx, PREFIX)
+                            if hists_idx<=hists_idx0:
+                                break
+                            if self.hists.get_vad_slope( hists_idx )<0.01:
+                                break
+                            xstart -= self.frame_size
+                        self.last_down.clear()
                         self.prefed = False
+                        self.pos[VPULSE] = xstart
+                    # else:
+                    #     print( f"[REC] ignore pulse voice/audio {var}" )
+                elif is_speech<self.pick_trig:
+                    self.rec = POST_VPULSE if self.rec==VPULSE else POST_TPULSE
+                    self.pos[POST_VPULSE] = end_pos
 
-            elif self.rec == 1:
-                # 音声の先頭部分
-                seg_len = self.seg_buffer.get_pos() - self.rec_start
-                if is_speech>=self.up_tirg:
-                    if seg_len>self.ignore_length:
-                        # 音声が規定の長さを超た
-                        tmpbuf = self.seg_buffer.to_numpy( -seg_len )
-                        var = voice_per_audio_rate(tmpbuf, sampling_rate=self.sample_rate)
-                        self.hists.replace_var( var )
-                        if var>self.var1:
-                            # FFTでも人の声っぽいのでセグメントとして認定
-                            print( f"segment start voice/audio {var}" )
-                            self.rec = 2
-                            # print(f"rec start {self.seg_buffer.get_pos()} {is_speech}")
-                            # 直全のパルスをマージする
-                            base = self.rec_start
-                            x1 = int(self.sample_rate*2.0)
-                            x2 = int(self.sample_rate*4.0)
-                            i=len(self.ignore_list)-1
-                            while i>=0:
-                                if base-self.ignore_list[i]>x2:
-                                    break
-                                if self.rec_start-self.ignore_list[i]<=x1:
-                                    self.rec_start = self.ignore_list[i]
-                                i-=1
-                            self.ignore_list.clear()
-                            # 上り勾配をマージする
-                            hx = (base-self.rec_start)//self.frame_size
-                            lenx = len(self.hists)
-                            sz = 0
-                            while (hx+sz+1)<lenx:
-                                v1 = self.hists.get_vad_count( lenx - 1 -hx - sz )
-                                if v1<self.pick_tirg:
-                                    break
-                                sz+=1
-                            self.rec_start = max( 0, self.rec_start - (self.frame_size * sz ))
-                            self.last_down.clear()
-                            self.prefed = False
-                            self.stt_data = SttData( SttData.Segment, utc, self.rec_start, 0, self.sample_rate )
-                        else:
-                            print( f"ignore pulse voice/audio {var}" )
+            elif self.rec==POST_VPULSE or self.rec==POST_TPULSE:
+                if is_speech>=self.pick_trig:
+                    self.rec = VPULSE if self.rec==POST_VPULSE else TPULSE
+                    self.ignore_list.add(end_pos)
+                    self.pos[VPULSE] = end_pos
                 else:
-                    # 規定時間より短く音声が終了
-                    self.rec = 0
-                    print(f"rec pulse {self.seg_buffer.get_pos()} {seg_len/self.sample_rate:.3f}")
-                    self.ignore_list.add(self.rec_start)
-                    self.rec_start = 0
+                    seg_len = end_pos - self.pos[POST_VPULSE]
+                    if seg_len>=self.ignore_length:
+                        #print(f"[REC] pulse->none {end_pos}")
+                        self.rec = NON_VOICE if self.rec==POST_VPULSE else TERM
+
+            elif self.rec==TERM:
+                seg_len = end_pos - self.pos[TERM]
+                if seg_len>=self.max_silent_length:
+                    # 終了通知
+                    stt_data = SttData( SttData.Term, utc, self.pos[TERM], end_pos, self.sample_rate )
+                    if self.callback is not None:
+                        self.callback(stt_data)
+                    self.rec=NON_VOICE
+                elif is_speech>=self.pick_trig:
+                    # print(f"[REC] Term->T_Pulse {end_pos} {is_speech}")
+                    self.rec=TPULSE
+                    self.ignore_list.add(end_pos)
+                    self.pos[VPULSE] = end_pos
             else:
-                # 音声未検出状態
-                if is_speech>=self.up_tirg and not self._mute:
-                    # 音声を検出した
-                    self.rec=1
-                    self.rec_start = self.seg_buffer.get_pos()
-                    print(f"rec up {self.seg_buffer.get_pos()} {is_speech}")
+                #NON_VOICE
+                if is_speech>=self.pick_trig:
+                    # print(f"[REC] NoVice->V_Pulse {end_pos} {is_speech}")
+                    self.rec=VPULSE
+                    self.ignore_list.add(end_pos)
+                    self.pos[VPULSE] = end_pos
 
-                else:
-                    # 音声じゃない
-                    # 無音通知処理
-                    if self.silent_start>0 and (self.seg_buffer.get_pos() - self.silent_start)>self.max_silent_length:
-                        stt_data = SttData( SttData.Term, utc, self.silent_start, self.silent_start, self.sample_rate )
-                        self.silent_start = 0
-                        if self.callback is None:
-                            self.dict_list.append( stt_data )
-                        else:
-                            self.callback(stt_data)
             self.hists.replace_color( self.rec )
-            if (num_samples-self.last_dump)+len(frame)*2>self.seg_buffer.capacity:
-                self.last_dump = num_samples+len(frame)
+            if (num_samples-self.last_dump)>=self.seg_buffer.capacity:
+                self.last_dump = num_samples
                 ed = self.seg_buffer.get_pos()
                 st = max(0, ed - self.seg_buffer.capacity)
                 dmp:SttData = SttData( SttData.Dump, utc, st, ed, self.sample_rate )
-                self._flush( dmp, ed )
+                self._flush( dmp )
         except:
             logger.exception(f"")
 
-    def _flush(self,stt_data:SttData,end_pos):
+    def _flush(self,stt_data:SttData):
             start_pos = stt_data.start
-            stt_data.end = end_pos
+            end_pos = stt_data.end
 
             b = self.seg_buffer.to_index( start_pos )
             e = self.seg_buffer.to_index( end_pos )
@@ -346,7 +422,5 @@ class AudioToSegmentSileroVAD:
             else:
                 self.callback(stt_data)
     
-    def end(self):
-        if self.rec:
-            end_pos = self.seg_buffer.get_pos()
-            self._flush(self.stt_data,end_pos)
+    def end(self, *, utc:float=0.0):
+        self.stop( utc=utc )

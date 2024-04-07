@@ -29,7 +29,7 @@ from .audio_to_segment_silero_vad import AudioToSegmentSileroVAD as AudioToSegme
 from ..voice_utils import voice_per_audio_rate
 
 class AudioToVoice:
-    def __init__(self, *, callback, sample_rate:int=16000, wave_dir=None):
+    def __init__(self, *, callback, sample_rate:int=16000, save_path=None):
         self.sample_rate = sample_rate if isinstance(sample_rate,int) else 16000
         self._state:int = 0
         self._lock:Condition = Condition()
@@ -40,7 +40,7 @@ class AudioToVoice:
         self.callback = callback
         self._mute:bool = False # ミュートする
         self._var3:float = 0.45
-        self.audio_to_segment:AudioToSegment = AudioToSegment( callback=self._fn_callback, wave_dir=wave_dir )
+        self.audio_to_segment:AudioToSegment = AudioToSegment( callback=self._fn_callback )
         self.vosk: list[KaldiRecognizer] = [None] * len(self._thread)
         self.vosk_model: vosk.Model = None
         self.vosk_spk: vosk.SpkModel = None
@@ -57,7 +57,7 @@ class AudioToVoice:
         # self.pass_ba = scipy.signal.butter( 2, [low, high], 'bandpass', output='ba')
         # self.cut_ba = scipy.signal.butter( 2, [low, high], 'bandstop', output='ba')
         # データ保存用
-        self.save_path:str = None
+        self.save_path:str = save_path
 
     def __getitem__(self,key):
         if 'mute'==key:
@@ -215,13 +215,16 @@ class AudioToVoice:
                 self.output_count=stt_data.seq+1
             else:
                 # 順番が来てなければキューに入れる
-                heappush( self.output_queue, (stt_data.seq,stt_data) )
+                if not ignore:
+                    heappush( self.output_queue, (stt_data.seq,stt_data) )
+                else:
+                    heappush( self.output_queue, (stt_data.seq,None) )
             # キューを処理する
             while len(self.output_queue)>0 and self.output_queue[0][0]==self.output_count:
-                _, stt_data = heappop(self.output_queue)
-                if not ignore:
+                seq, stt_data = heappop(self.output_queue)
+                if stt_data is not None:
                     self.callback(stt_data)
-                self.output_count=stt_data.seq+1
+                self.output_count=seq+1
 
     def set_pause(self,b):
         try:
@@ -248,9 +251,13 @@ class AudioToVoice:
     def _save_audio(self,stt_data:SttData):
         try:
             if self.save_path is not None and os.path.isdir(self.save_path):
-                dt = datetime.datetime.now()
-                fn = dt.strftime("audio_%Y%m%d_%H%M%S")
-                file_path = os.path.join(self.save_path,fn)
-                stt_data.save(file_path)
+                max_vad = max(stt_data['vad'])
+                if max_vad>0.2:
+                    dt = datetime.datetime.now()
+                    dir = os.path.join( self.save_path, dt.strftime("%Y%m%d") )
+                    os.makedirs(dir,exist_ok=True)
+                    filename = dt.strftime("audio_%Y%m%d_%H%M%S")
+                    file_path = os.path.join( dir, filename )
+                    stt_data.save(file_path)
         except:
             logger.exception("can not save data")

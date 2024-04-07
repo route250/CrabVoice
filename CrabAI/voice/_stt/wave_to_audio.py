@@ -7,6 +7,8 @@ import wave
 import numpy as np
 import librosa
 
+from .stt_data import SttData
+
 logger = logging.getLogger('wave_to_audio')
 
 class wave_to_audio:
@@ -51,6 +53,12 @@ class wave_to_audio:
         self.filename = filename
 
     def start(self, *, wait:bool=False ):
+        if self.filename.endswith('.wav'):
+            self.start_wav(wait=wait)
+        elif self.filename.endswith('.npz'):
+            self.start_stt_data(wait=wait)
+
+    def start_wav(self, *, wait:bool=False ):
         self.state=1
         try:
             with wave.open( self.filename, 'rb' ) as stream:
@@ -60,7 +68,6 @@ class wave_to_audio:
                 num_fr = stream.getnframes()
                 segsize = int( self.sample_rate * ( fr/self.sample_rate ) * 0.1 )
                 num_tm = num_fr/fr
-                wait_time = segsize/fr
                 log_inverval = fr * 5
                 i = 0
                 l = 0
@@ -84,6 +91,45 @@ class wave_to_audio:
                         audio_f32 = librosa.resample( orig_audio_f32, axis=0, orig_sr=fr, target_sr=self.sample_rate )
                     else:
                         audio_f32 = orig_audio_f32
+                    wa = call_time - time.time()
+                    if wait and wa>0:
+                        time.sleep( wa )
+                    self.callback( 0.0, audio_f32 )
+                self.callback( 0.0, None )
+        except:
+            logger.exception(f"filename:{self.filename}")
+        finally:
+            self.state = 0
+
+    def start_stt_data(self, *, wait:bool=False ):
+        self.state=1
+        try:
+                stt_data:SttData = SttData.load( self.filename )
+                stt_data.sample_rate
+                audio = stt_data['raw']
+                if audio is None:
+                    audio = stt_data['audio']
+            
+                fr = stt_data.sample_rate
+                num_fr = len(audio)
+                segsize = int( self.sample_rate * ( fr/self.sample_rate ) * 0.1 )
+                num_tm = num_fr/fr
+                log_inverval = fr * 5
+                logprints = 0
+                start_time = time.time()
+                for i in range( 0, num_fr, segsize ):
+                    orig_audio_f32 = audio[i:i+segsize]
+                    call_time = start_time + (i/fr)
+                    logprints += len(orig_audio_f32)
+                    if logprints>log_inverval:
+                        logprints=0
+                        tm = i/fr
+                        print( f"wave {tm:.2f}/{num_tm:.2f} {i}/{num_fr}")
+
+                    if fr != self.sample_rate:
+                        audio_f32 = librosa.resample( orig_audio_f32, axis=0, orig_sr=fr, target_sr=self.sample_rate ).reshape(-1,1)
+                    else:
+                        audio_f32 = orig_audio_f32.reshape(-1,1)
                     wa = call_time - time.time()
                     if wait and wa>0:
                         time.sleep( wa )

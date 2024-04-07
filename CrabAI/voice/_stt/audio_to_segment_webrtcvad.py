@@ -176,7 +176,7 @@ class AudioToSegmentWebrtcVAD:
             energy = rms_energy(frame, sr=self.sample_rate )
             #
             self.seg_buffer.append(frame)
-            self.hists.add( frame.max(), frame.min(), self.rec, self.count1.sum, is_speech, energy, zc, 0.0 )
+            self.hists.add( frame.max(), frame.min(), self.rec, self.count1.sum, energy, zc, 0.0 )
 
             if self._mute:
                 self.rec=0

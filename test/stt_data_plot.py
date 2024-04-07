@@ -3,35 +3,90 @@ import time
 import numpy as np
 from scipy import signal
 import tkinter as tk
-from tkinter import filedialog, ttk
+from tkinter import ttk
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 sys.path.append(os.getcwd())
 from CrabAI.voice._stt.audio_to_text import SttData
 
-class SttDataPlotter:
+class SttDataPlotter(ttk.Frame):
 
-    def __init__(self, parent):
+    def __init__(self, parent, **kwargs ):
+        super().__init__( parent, **kwargs )
+
+        plt.rcParams['agg.path.chunksize'] = 10000
+        plt.rcParams['path.simplify'] = True
+        plt.rcParams['path.simplify_threshold'] = 0.1
+
+        # self.frame = ttk.Frame( parent )
+        self.toolbar = ttk.Frame( self )
+        self.toolbar.pack( side=tk.TOP, fill=tk.X )
+
+        self.btn = ttk.Button( self.toolbar)
+        self.btn.pack( side=tk.LEFT )
+
+        self.sidebar = ttk.Frame( self )
+        self.sidebar.pack( side=tk.LEFT, fill=tk.X )
+
+        self.btn2 = ttk.Button( self.sidebar)
+        self.btn2.pack( side=tk.TOP )
+        # サイドバー内のテキスト表示用ラベルを追加
+        self.display_label = ttk.Label(self.sidebar, text="")
+        self.display_label.pack(side=tk.TOP)
+
+        self.plotframe = ttk.Frame( self )
+        self.plotframe.pack( side=tk.BOTTOM, fill=tk.BOTH, expand=True )
 
         self.figure = plt.Figure(figsize=(6, 2), dpi=100)
-        self.canvas = FigureCanvasTkAgg(self.figure, parent)
+        self.canvas = FigureCanvasTkAgg(self.figure, self.plotframe)
+        self.canvas.get_tk_widget().pack( side=tk.TOP, fill=tk.BOTH, expand=True )
+
         self.ax1 = None
+        self.ax3 = None
+        self.x_sec = None
+        self.x_frame = None
+        self.y_vad = None
+        self.y_vad_ave = None
+        self.y_vad_slope = None
+        self.y_vad_accel = None
         self.plot_scale = 1.0
         self.plot_xlim = None
         self._press_x = None
         self._update_time:float = 0
 
-    def pack(self,*args,**kwargs):
-        self.canvas.get_tk_widget().pack( *args, **kwargs )
+    # def pack(self,*args,**kwargs):
+    #     self.frame.pack( *args, **kwargs )
 
     def plot(self, stt_data: SttData):
         self.figure.clear()
+        self.ax1 = None
+        self.ax3 = None
+        self.x_sec = None
+        self.x_frame = None
+        self.y_vad = None
+        self.y_vad_ave = None
+        self.y_vad_slope = None
+        self.y_vad_accel = None
+
         if stt_data is not None and stt_data.hists is not None:
             hists = stt_data.hists
             hi = hists['hi']
             lo = hists['lo']
             co = hists['color']
-            vad = hists['vad1']
+            vad = hists['vad']
+            self.y_vad = vad
+
+            vad_ave = stt_data['vad_ave']
+            self.y_vad_ave = vad_ave
+
+            vad_slope = stt_data['vad_slope']
+            self.y_vad_slope = vad_slope
+            vad_slope = ( (vad_slope * 2 ) + 0.5 ) if vad_slope is not None else None
+
+            vad_accel = stt_data['vad_accel']
+            self.y_vad_accel = vad_accel
+            vad_accel = ( (vad_accel * 2 ) + 0.5 ) if vad_accel is not None else None
+
             var = hists['var']
 
             frames = stt_data.end - stt_data.start
@@ -48,18 +103,28 @@ class SttDataPlotter:
 
             self.ax1 = self.figure.add_subplot(1, 1, 1)
             ax3 = self.ax1.twinx()
+            self.ax3 = ax3
 
-            x_sec = [round((stt_data.start + (i * chunk_size)) / stt_data.sample_rate, 3) for i in range(len(hi))]
+            x_frame = [ int(stt_data.start + (i * chunk_size)) for i in range(len(hi))]
+            self.x_frame = x_frame
+            x_sec = [round( x_frame[i] / stt_data.sample_rate, 3) for i in range(len(hi))]
+            self.x_sec = x_sec
             self.plot_xlim = (x_sec[0], x_sec[-1])
 
             self.ax1.fill_between(x_sec, lo, hi, color='gray')
 
             self.ax1.plot(x_sec, vad, color='r', label='vad')
-            self.ax1.plot(x_sec, var, color='y', label='var')
+            if vad_ave is not None:
+                self.ax1.plot(x_sec, vad_ave, color='r', linestyle='--', label='vad_ave')
+            if vad_slope is not None:
+                self.ax1.plot(x_sec, vad_slope, color='y', label='vad_slope')
+            if vad_accel is not None:
+                self.ax1.plot(x_sec, vad_accel, color='y', linestyle='--', label='vad_accel')
+            self.ax1.plot(x_sec, var, color='g', label='var')
             self.ax1.set_ylim(ymin=ymin, ymax=ymax)
             self.ax1.grid(True)
             ax3.step(x_sec, co, where='post', color='b', label='color')
-            ax3.set_ylim(ymin=0, ymax=3.0)
+            ax3.set_ylim(ymin=0, ymax=10)
 
             h2, l2 = self.ax1.get_legend_handles_labels()
             h3, l3 = ax3.get_legend_handles_labels()
@@ -70,7 +135,7 @@ class SttDataPlotter:
             self.canvas.mpl_connect('button_release_event', self._on_release)
             self.canvas.mpl_connect('motion_notify_event', self._on_motion)
 
-            self.canvas.draw()
+        self.canvas.draw()
 
     def _on_mouse_wheel(self, event):
         # 拡大縮小の基準スケール
@@ -80,7 +145,7 @@ class SttDataPlotter:
 
         if event.button == 'up':
             # 拡大
-            self.plot_scale = min(10,self.plot_scale+0.2)
+            self.plot_scale = min(100,self.plot_scale+0.2)
         elif event.button == 'down':
             # 縮小
             self.plot_scale = max(1.0, self.plot_scale - 0.2 )
@@ -111,11 +176,39 @@ class SttDataPlotter:
         self.ax1.set_xlim(new_xlim)
         self.ax1.set_xlim(new_xlim)
 
-        self.canvas.draw()
+        self.canvas.draw_idle()
 
     def _on_press(self, event):
+
+        if event.inaxes != self.ax1 and event.inaxes != self.ax3:  # クリックされた場所がプロットエリア外であれば何もしない
+            return
+
         self._press_x = event.xdata
         self._update_time = time.time()
+
+        # クリックされたX座標に最も近いデータポイントのインデックスを探索
+        index = np.abs(np.array(self.x_sec) - self._press_x).argmin()
+        sec = self.x_sec[index]
+        frame = self.x_frame[index]
+
+        # 対応するVAD、VAD_AVE、VAD_SLOPEの値を取得
+        val_vad = self.y_vad[index] if self.y_vad is not None else 'N/A'
+        val_vad_ave = self.y_vad_ave[index] if self.y_vad_ave is not None else 'N/A'
+        val_vad_slope = self.y_vad_slope[index] if self.y_vad_slope is not None else 'N/A'
+        val_vad_accel = self.y_vad_accel[index] if self.y_vad_accel is not None else 'N/A'
+
+        # 前回の垂直線とテキストがあれば消去
+        if hasattr(self, '_vline'):
+            self._vline.remove()
+
+        # Y軸方向に半透明の垂直線を引く
+        self._vline = self.ax1.axvline(x=sec, color='blue', linestyle='--', linewidth=2, alpha=0.5)
+
+        # サイドバーのラベルにテキストを設定
+        display_text = f"Sec: {sec:.3f}\nFrame: {frame}\nVAD: {val_vad:.2f}\nAVE: {val_vad_ave:.2f}\nSLOPE: {val_vad_slope:.2f}\nACCEL:{val_vad_accel:.2f}"
+        self.display_label.config(text=display_text)
+
+        self.canvas.draw()
 
     def _on_release(self, event):
         self._press_x = None
@@ -301,18 +394,18 @@ class FFTplot:
 
         self.canvas.draw()
 
-class SttDataTable:
+class SttDataTable(ttk.Frame):
 
-    def __init__(self,parent):
+    def __init__(self, parent, **kwargs ):
+        super().__init__( parent, **kwargs )
 
         self.stt_data_map = {}
         self.file_path_map = {}
 
         # Frameウィジェットを作成して、Treeviewとスクロールバーを格納
-        self.frame = ttk.Frame(parent)
-        self.tree = ttk.Treeview(self.frame, columns=('file','utc', 'start', 'end', 'sec', 'sig','vad', 'content'), show='headings')
+        self.tree:ttk.Treeview = ttk.Treeview(self, columns=('file','utc', 'start', 'end', 'sec', 'sig','vad', 'content'), show='headings')
         # 縦スクロールバーの作成
-        self.v_scroll = ttk.Scrollbar(self.frame, orient="vertical", command=self.tree.yview)
+        self.v_scroll = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=self.v_scroll.set)
 
         self.tree.heading('file', text='ファイル名')
@@ -336,75 +429,70 @@ class SttDataTable:
         self._ev_on_select = None
         self.tree.bind('<<TreeviewSelect>>', self._fn_on_select)
 
-    def pack(self,*args,**kwargs):
-        self.frame.pack( *args, **kwargs )
         self.tree.pack( side=tk.LEFT, fill=tk.BOTH, expand=True )
         self.v_scroll.pack(side=tk.RIGHT, fill="y")
+
+    # def pack(self,*args,**kwargs):
+    #     self.frame.pack( *args, **kwargs )
+    #     self.tree.pack( side=tk.LEFT, fill=tk.BOTH, expand=True )
+    #     self.v_scroll.pack(side=tk.RIGHT, fill="y")
 
     def bind(self, fn ):
         self._ev_on_select = fn
 
+    def selection_clear(self):
+        self.tree.selection_clear()
+
+    def _selected_iid(self):
+        try:
+            return self.tree.selection()[0]
+        except:
+            return None
+
+    def selected(self) ->SttData:
+        try:
+            iid = self._selected_iid() # 選択されたアイテムID
+            file_path = self.file_path_map.get(iid)  # 対応するSTTDataオブジェクトを取得
+            stt_data:SttData= self.stt_data_map.get(iid)  # 対応するSTTDataオブジェクトを取得
+            if stt_data is not None:
+                return stt_data
+            if file_path is not None:
+                stt_data:SttData = SttData.load(file_path)
+                if stt_data is not None:
+                    return stt_data
+                print(f"ロードできません: {file_path}")
+        except:
+            print(f"ロードできません: {file_path}")
+
     def _fn_on_select(self, event):
         if self._ev_on_select is not None:
-            selected_item = self.tree.selection()[0]  # 選択されたアイテムID
-            row_id = int(selected_item.split('I')[1], 16) - 1  # 行番号を取得
-            stt_data:SttData = self.stt_data_map.get(row_id)  # 対応するSTTDataオブジェクトを取得
-            if stt_data is None:
-                file_path = self.file_path_map.get(row_id)  # 対応するSTTDataオブジェクトを取得
-                try:
-                    stt_data:SttData = SttData.load(file_path)
-                except:
-                    print(f"ロードできません: {file_path}")
-                    return
+            stt_data:SttData = self.selected()
             self._ev_on_select(stt_data)
 
     def clear(self):
+        self._fn_on_select(None)
         self.stt_data_map={}
         self.file_path_map={}
         self.tree.selection_clear()
         for item in self.tree.get_children():
             self.tree.delete(item)
 
-    def selection_clear(self):
-        self.tree.selection_clear()
-
-    def load(self, file_path):
-        try:
-            stt_data:SttData = SttData.load(file_path)
-            if stt_data is None:
-                print(f"ロードできません: {file_path}")
-                return
-        except:
-            print(f"ロードできません: {file_path}")
-
     def add(self, stt_data:SttData, file_path=None ):
         if stt_data.typ != SttData.Text and stt_data.typ != SttData.Dump:
             return
         file_name, _ = os.path.splitext(os.path.basename(file_path)) if file_path is not None else None,None
-        row_id = len(self.file_path_map)  # 現在の行数をキーとする
-        self.stt_data_map[row_id] = stt_data  # 結果を辞書に追加
-        self.file_path_map[row_id] = file_path  # 結果を辞書に追加
         # 結果をテーブルに表示
         sec = (stt_data.end-stt_data.start)/stt_data.sample_rate
         sig=round( max(max(stt_data.hists['hi']),abs(min(stt_data.hists['lo'])) ), 3)
-        vad=round( max(stt_data.hists['vad1']), 3)
-        self.tree.insert('', tk.END, values=( file_name, stt_data.utc, stt_data.start, stt_data.end, sec, sig, vad, stt_data.content))
-
-    def selected(self) ->SttData:
-        try:
-            selected_item = self.tree.selection()[0]  # 選択されたアイテムID
-            row_id = int(selected_item.split('I')[1], 16) - 1  # 行番号を取得
-            file_path = self.file_path_map.get(row_id)  # 対応するSTTDataオブジェクトを取得
-            stt_data:SttData= self.stt_data_map.get(row_id)  # 対応するSTTDataオブジェクトを取得
-            return stt_data
-        except:
-            print(f"ロードできません: {file_path}")
+        vad=round( max(stt_data.hists['vad']), 3)
+        iid:str = self.tree.insert('', tk.END, values=( file_name, stt_data.utc, stt_data.start, stt_data.end, sec, sig, vad, stt_data.content))
+        self.stt_data_map[iid] = stt_data  # 結果を辞書に追加
+        self.file_path_map[iid] = file_path  # 結果を辞書に追加
 
     def selected_filepath(self) ->str:
         try:
-            selected_item = self.tree.selection()[0]  # 選択されたアイテムID
-            row_id = int(selected_item.split('I')[1], 16) - 1  # 行番号を取得
-            file_path = self.file_path_map.get(row_id)  # 対応するSTTDataオブジェクトを取得
+            iid = self._selected_iid() # 選択されたアイテムID
+            file_path = self.file_path_map.get(iid)  # 対応するSTTDataオブジェクトを取得
             return file_path
         except:
             print(f"ロードできません: {file_path}")
