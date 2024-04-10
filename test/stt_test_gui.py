@@ -35,28 +35,17 @@ class Application(tk.Tk):
     def create_widgets(self):
 
         # ボタンを配置するフレーム
-        self.button_frame = tk.Frame(self)
+        self.menu_bar = tk.Menu
+        self.button_frame = ttk.Frame(self)
         self.button_frame.pack(fill=tk.X, pady=10)
 
         # ファイル選択ボタン
-        self.load_button = tk.Button(self.button_frame, text='ファイルを選択', command=self.load_file)
+        self.load_button = ttk.Button(self.button_frame, text='ファイルを選択', command=self.load_file)
         self.load_button.pack(side=tk.LEFT)
 
         # 実行ボタン
-        self.run_button = tk.Button(self.button_frame, text='実行', command=self.run_analysis)
+        self.run_button = ttk.Button(self.button_frame, text='実行', command=self.run_analysis)
         self.run_button.pack(side=tk.LEFT)
-
-        # 再生ボタン
-        self.play_button = tk.Button(self.button_frame, text='再生(audio)', command=self.play_audio)
-        self.play_button.pack(side=tk.LEFT)
-
-        # 再生ボタン
-        self.play_button = tk.Button(self.button_frame, text='再生(raw)', command=self.play_raw)
-        self.play_button.pack(side=tk.LEFT)
-
-        # 停止ボタン
-        self.stop_button = tk.Button(self.button_frame, text='停止', command=self.stop_audio)
-        self.stop_button.pack(side=tk.LEFT)
 
         # 結果表示テーブル
         self.table = SttDataTable(self)
@@ -122,38 +111,7 @@ class Application(tk.Tk):
             traceback.print_exc()
 
     def plot(self,stt_data:SttData):
-        self.plot1.plot(stt_data)
-
-    def play_audio(self):
-        self.play_audiox(False)
-
-    def play_raw(self):
-        self.play_audiox(True)
-
-    def play_audiox(self,b):
-        stt_data:SttData = self.table.selected()
-        if stt_data is None:
-            print("stt_data is None")
-            return
-        st_sec, ed_sec = self.plot1.get_xlim()
-        if b:
-            audio = stt_data.raw
-        else:
-            audio = stt_data.audio
-        if audio is None:
-            print("stt_data is None")
-            return
-
-        st = max(0, int(st_sec * stt_data.sample_rate) - stt_data.start)
-        ed = min( len(audio), int(ed_sec * stt_data.sample_rate) - stt_data.start )
-        bb = audio_to_wave_bytes( audio[st:ed], sample_rate=stt_data.sample_rate)
-        xx = BytesIO(bb)
-        pygame.mixer.init()
-        pygame.mixer.music.load(xx)
-        pygame.mixer.music.play()
-
-    def stop_audio(self):
-        pygame.mixer.music.stop()
+        self.plot1.set_stt_data(stt_data)
 
 if __name__ == '__main__':
     app = Application()

@@ -1,6 +1,5 @@
 
 import sys,os,glob
-from io import BytesIO
 import traceback
 from threading import Thread
 from queue import Queue, Empty
@@ -15,8 +14,7 @@ import pygame
 
 sys.path.append(os.getcwd())
 from CrabAI.voice._stt.audio_to_text import SttData
-from CrabAI.voice.voice_utils import audio_to_wave_bytes, audio_to_wave
-from stt_data_plot import SttDataTable, SttDataPlotter, FFTplot
+from stt_data_plot import SttDataTable, SttDataPlotter
 
 # SttDataを表示、再生するGUI
 
@@ -37,28 +35,12 @@ class SttDataViewer(tk.Tk):
     def create_widgets(self):
 
         # ボタンを配置するフレーム
-        self.button_frame = tk.Frame(self)
+        self.button_frame = ttk.Frame(self)
         self.button_frame.pack(fill=tk.X, pady=4)
 
         # ファイル選択ボタン
-        self.load_button = tk.Button(self.button_frame, text='ファイルを選択', command=self.load_from_directory)
+        self.load_button = ttk.Button(self.button_frame, text='フォルダを選択', command=self.load_from_directory)
         self.load_button.pack(side=tk.LEFT)
-
-        # 再生ボタン
-        self.play_button = tk.Button(self.button_frame, text='再生', command=self.play_audio)
-        self.play_button.pack(side=tk.LEFT)
-
-        # 停止ボタン
-        self.stop_button = tk.Button(self.button_frame, text='停止', command=self.stop_audio)
-        self.stop_button.pack(side=tk.LEFT)
-
-        # FFTボタン
-        self.fft_button = tk.Button(self.button_frame, text='FFT', command=self.show_fft_spectrum)
-        self.fft_button.pack(side=tk.LEFT)
-
-        # wave保存ボタン
-        self.save_button = tk.Button(self.button_frame, text='Save', command=self.save_audio)
-        self.save_button.pack(side=tk.LEFT)
 
         self.main_frame = ttk.PanedWindow( self )
         self.main_frame.pack( fill=tk.BOTH, expand=True )
@@ -134,58 +116,7 @@ class SttDataViewer(tk.Tk):
 
     def plot(self,stt_data:SttData):
         # GraphPlotterを使用してグラフを描画
-        self.plot1.plot(stt_data)
-
-    def play_audio(self):
-        stt_data:SttData = self.table.selected()
-        st_sec, ed_sec = self.plot1.get_xlim()
-        if stt_data is not None and stt_data.audio is not None:
-            st = max(0, int(st_sec * stt_data.sample_rate) - stt_data.start)
-            ed = min( len(stt_data.audio), int(ed_sec * stt_data.sample_rate) - stt_data.start )
-            bb = audio_to_wave_bytes( stt_data.audio[st:ed], sample_rate=stt_data.sample_rate)
-            xx = BytesIO(bb)
-            pygame.mixer.init()
-            pygame.mixer.music.load(xx)
-            pygame.mixer.music.play()
-        else:
-            print("ファイルが選択されていません")
-
-    def save_audio(self):
-        stt_data:SttData = self.table.selected()
-        file_path = self.table.selected_filepath()
-        st_sec, ed_sec = self.plot1.get_xlim()
-        if stt_data is not None and stt_data.audio is not None:
-            file_name, _ = os.path.splitext(os.path.basename(file_path)) if file_path is not None else None
-            files = [('Wave Files', '*.wav'),('All Files', '*.*')]  
-            out = filedialog.asksaveasfilename( filetypes=files, initialdir=self.dir_path, initialfile=file_name, confirmoverwrite=True, defaultextension=files )
-            st = max(0, int(st_sec * stt_data.sample_rate) - stt_data.start)
-            ed = min( len(stt_data.audio), int(ed_sec * stt_data.sample_rate) - stt_data.start )
-            audio_to_wave( out, stt_data.audio[st:ed], samplerate=stt_data.sample_rate)
-        else:
-            print("ファイルが選択されていません")
-
-    def stop_audio(self):
-        pygame.mixer.music.stop()
-
-    def show_fft_spectrum(self):
-        stt_data:SttData = self.table.selected()
-        if stt_data is None or stt_data.audio is None:
-            print("ファイルが選択されていません")
-            return
-        # FFTの実行
-        st_sec, ed_sec = self.plot1.get_xlim()
-        st = max(0, int(st_sec * stt_data.sample_rate) - stt_data.start)
-        ed = min( len(stt_data.audio), int(ed_sec * stt_data.sample_rate) - stt_data.start )
-
-        raw:np.ndarray = stt_data.raw[st:ed] if stt_data.raw is not None else None
-        audio:np.ndarray = stt_data.audio[st:ed] if stt_data.audio is not None else None
-
-        # 新しいウィンドウでプロットを表示
-        new_window = tk.Toplevel(self)
-        new_window.title("FFT Spectrum")
-        new_window.geometry('800x600')
-        fftplt = FFTplot(new_window, raw, audio, stt_data.sample_rate)
-        fftplt.pack( side=tk.TOP, fill='both', expand=True)
+        self.plot1.set_stt_data(stt_data)
 
 if __name__ == '__main__':
     app = SttDataViewer()

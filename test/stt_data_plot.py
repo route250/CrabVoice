@@ -1,26 +1,50 @@
 import sys,os
+from io import BytesIO
 import time
 import numpy as np
+import pygame
 from scipy import signal
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 sys.path.append(os.getcwd())
 from CrabAI.voice._stt.audio_to_text import SttData
+from CrabAI.voice.voice_utils import audio_to_wave_bytes, audio_to_wave
 
 class SttDataPlotter(ttk.Frame):
 
     def __init__(self, parent, **kwargs ):
         super().__init__( parent, **kwargs )
 
+        self._stt_data: SttData = None
+
         plt.rcParams['agg.path.chunksize'] = 10000
         plt.rcParams['path.simplify'] = True
         plt.rcParams['path.simplify_threshold'] = 0.1
 
-        # self.frame = ttk.Frame( parent )
         self.toolbar = ttk.Frame( self )
         self.toolbar.pack( side=tk.TOP, fill=tk.X )
+
+        # FFTボタン
+        self.fft_button = ttk.Button(self.toolbar, text='FFT', command=self.show_fft_spectrum)
+        self.fft_button.pack(side=tk.LEFT)
+
+        # 再生ボタン
+        self.play_button = ttk.Button(self.toolbar, text='再生(audio)', command=self.play_audio)
+        self.play_button.pack(side=tk.LEFT)
+
+        # 再生ボタン
+        self.play_button = ttk.Button(self.toolbar, text='再生(raw)', command=self.play_raw)
+        self.play_button.pack(side=tk.LEFT)
+
+        # 停止ボタン
+        self.stop_button = ttk.Button(self.toolbar, text='停止', command=self.stop_audio)
+        self.stop_button.pack(side=tk.LEFT)
+
+        # wave保存ボタン
+        self.save_button = ttk.Button(self.toolbar, text='Save', command=self.save_audio)
+        self.save_button.pack(side=tk.LEFT)
 
         self.btn = ttk.Button( self.toolbar)
         self.btn.pack( side=tk.LEFT )
@@ -45,97 +69,146 @@ class SttDataPlotter(ttk.Frame):
         self.ax3 = None
         self.x_sec = None
         self.x_frame = None
+        self.y_hi = None
+        self.y_lo = None
+        self.y_color = None
         self.y_vad = None
         self.y_vad_ave = None
         self.y_vad_slope = None
         self.y_vad_accel = None
+        self.y_var = None
+        self.y_color = None
         self.plot_scale = 1.0
         self.plot_xlim = None
         self._press_x = None
         self._update_time:float = 0
 
-    # def pack(self,*args,**kwargs):
-    #     self.frame.pack( *args, **kwargs )
+        self.y_min = 0.0
+        self.y_max = 1.5
 
-    def plot(self, stt_data: SttData):
-        self.figure.clear()
+    def set_stt_data(self, stt_data: SttData):
+
+        self._stt_Data: SttData = stt_data
         self.ax1 = None
         self.ax3 = None
         self.x_sec = None
         self.x_frame = None
+        self.y_hi = None
+        self.y_lo = None
+        self.y_color = None
         self.y_vad = None
         self.y_vad_ave = None
         self.y_vad_slope = None
         self.y_vad_accel = None
+        self.y_var = None
+        self.y_color = None
+        self.plot_scale = 1.0
+        self.plot_xlim = None
+        self._press_x = None
 
-        if stt_data is not None and stt_data.hists is not None:
-            hists = stt_data.hists
-            hi = hists['hi']
-            lo = hists['lo']
-            co = hists['color']
-            vad = hists['vad']
-            self.y_vad = vad
+        if stt_data is None or stt_data.hists is None:
+            self._plot_draw()
+            return
 
-            vad_ave = stt_data['vad_ave']
-            self.y_vad_ave = vad_ave
+        hists = stt_data.hists
+        hi = hists['hi']
+        lo = hists['lo']
+        if hi is None or lo is None or len(hi)!=len(lo) or len(hi)<2:
+            self._plot_draw()
+            return
 
-            vad_slope = stt_data['vad_slope']
-            self.y_vad_slope = vad_slope
-            vad_slope = ( (vad_slope * 2 ) + 0.5 ) if vad_slope is not None else None
+        samples = stt_data.end - stt_data.start
+        frames = len(hi)
+        frame_size = samples // frames
 
-            vad_accel = stt_data['vad_accel']
-            self.y_vad_accel = vad_accel
-            vad_accel = ( (vad_accel * 2 ) + 0.5 ) if vad_accel is not None else None
+        ymid = (self.y_max-self.y_min)/2
+        yhalf = self.y_max-ymid
+        hi = hi * yhalf + ymid
+        lo = lo * yhalf + ymid
+        self.y_hi = hi
+        self.y_lo = lo
 
-            var = hists['var']
+        co = hists['color']
+        self.y_color = co
+        vad = hists['vad']
+        self.y_vad = vad
 
-            frames = stt_data.end - stt_data.start
-            chunks = len(hi)
-            chunk_size = frames // chunks
+        vad_ave = stt_data['vad_ave']
+        self.y_vad_ave = vad_ave
 
-            ymin=0.0
-            ymax=1.5
+        vad_slope = stt_data['vad_slope']
+        self.y_vad_slope = vad_slope
+        vad_slope = ( (vad_slope * 2 ) + 0.5 ) if vad_slope is not None else None
 
-            ymid = (ymax-ymin)/2
-            yhalf = ymax-ymid
-            hi = hi * yhalf + ymid
-            lo = lo * yhalf + ymid
+        vad_accel = stt_data['vad_accel']
+        self.y_vad_accel = vad_accel
+        vad_accel = ( (vad_accel * 2 ) + 0.5 ) if vad_accel is not None else None
 
-            self.ax1 = self.figure.add_subplot(1, 1, 1)
-            ax3 = self.ax1.twinx()
-            self.ax3 = ax3
+        var = hists['var']
+        self.y_var = var
 
-            x_frame = [ int(stt_data.start + (i * chunk_size)) for i in range(len(hi))]
-            self.x_frame = x_frame
-            x_sec = [round( x_frame[i] / stt_data.sample_rate, 3) for i in range(len(hi))]
-            self.x_sec = x_sec
-            self.plot_xlim = (x_sec[0], x_sec[-1])
+        x_frame = [ int(stt_data.start + (i * frame_size)) for i in range(len(hi))]
+        self.x_frame = x_frame
+        x_sec = [round( x_frame[i] / stt_data.sample_rate, 3) for i in range(len(hi))]
+        self.x_sec = x_sec
+        self.plot_xlim = (x_sec[0], x_sec[-1])
 
-            self.ax1.fill_between(x_sec, lo, hi, color='gray')
+        self._plot_draw()
 
-            self.ax1.plot(x_sec, vad, color='r', label='vad')
-            if vad_ave is not None:
-                self.ax1.plot(x_sec, vad_ave, color='r', linestyle='--', label='vad_ave')
-            if vad_slope is not None:
-                self.ax1.plot(x_sec, vad_slope, color='y', label='vad_slope')
-            if vad_accel is not None:
-                self.ax1.plot(x_sec, vad_accel, color='y', linestyle='--', label='vad_accel')
-            self.ax1.plot(x_sec, var, color='g', label='var')
-            self.ax1.set_ylim(ymin=ymin, ymax=ymax)
-            self.ax1.grid(True)
-            ax3.step(x_sec, co, where='post', color='b', label='color')
-            ax3.set_ylim(ymin=0, ymax=10)
+    def _plot_draw(self):
 
-            h2, l2 = self.ax1.get_legend_handles_labels()
-            h3, l3 = ax3.get_legend_handles_labels()
-            self.ax1.legend(h2 + h3, l2 + l3, loc='upper right')
+        x_sec = self.x_sec
+        hi = self.y_hi
+        lo = self.y_lo
+        vad = self.y_vad
+        vad_ave = self.y_vad_ave
+        vad_slope = self.y_vad_slope
+        vad_accel = self.y_vad_accel
+        co = self.y_color
+        var = self.y_var
 
-            self.canvas.mpl_connect('scroll_event', self._on_mouse_wheel)
-            self.canvas.mpl_connect('button_press_event', self._on_press)
-            self.canvas.mpl_connect('button_release_event', self._on_release)
-            self.canvas.mpl_connect('motion_notify_event', self._on_motion)
+        self.figure.clear() 
+        self.ax1 = None
+        self.ax3 = None
+        self._update_time:float = 0
 
-        self.canvas.draw()
+        if x_sec is None or hi is None or lo is None:
+            self.canvas.draw_idle()
+            return
+
+        self.ax1 = self.figure.add_subplot(1, 1, 1)
+        ax3 = self.ax1.twinx()
+        self.ax3 = ax3
+        ax3.set_ylim(ymin=0, ymax=15)
+        ax3.set_yticks( [0,1,2,3,4,5,6,7,8,9,10])
+        ax3.set_yticklabels( ['','1','2','3','4','5','6','7','8','9',''])
+        self.ax1.set_ylim(ymin=self.y_min, ymax=self.y_max)
+        self.ax1.set_yticks( [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0] )
+        self.ax1.set_yticklabels( ['0','','','','','.5','','','','','1.0'])
+
+        self.ax1.fill_between(x_sec, lo, hi, color='gray')
+
+        self.ax1.plot(x_sec, vad, color='r', label='vad')
+        if vad_ave is not None:
+            self.ax1.plot(x_sec, vad_ave, color='r', linestyle='--', label='vad_ave')
+        if vad_slope is not None:
+            self.ax1.plot(x_sec, vad_slope, color='y', label='vad_slope')
+        if vad_accel is not None:
+            self.ax1.plot(x_sec, vad_accel, color='y', linestyle='--', label='vad_accel')
+        self.ax1.plot(x_sec, var, color='g', label='var')
+        self.ax1.grid(True)
+        ax3.step(x_sec, co, where='post', color='b', label='color')
+
+        h2, l2 = self.ax1.get_legend_handles_labels()
+        h3, l3 = ax3.get_legend_handles_labels()
+        self.ax1.legend(h2 + h3, l2 + l3, loc='upper right',ncol=4)
+
+        self.canvas.mpl_connect('scroll_event', self._on_mouse_wheel)
+        self.canvas.mpl_connect('button_press_event', self._on_press)
+        self.canvas.mpl_connect('button_release_event', self._on_release)
+        self.canvas.mpl_connect('motion_notify_event', self._on_motion)
+
+        self.canvas.draw_idle()
 
     def _on_mouse_wheel(self, event):
         # 拡大縮小の基準スケール
@@ -174,7 +247,7 @@ class SttDataPlotter(ttk.Frame):
 
         # 両方の軸にズーム操作を適用
         self.ax1.set_xlim(new_xlim)
-        self.ax1.set_xlim(new_xlim)
+       # self.ax1.set_xlim(new_xlim)
 
         self.canvas.draw_idle()
 
@@ -203,12 +276,11 @@ class SttDataPlotter(ttk.Frame):
 
         # Y軸方向に半透明の垂直線を引く
         self._vline = self.ax1.axvline(x=sec, color='blue', linestyle='--', linewidth=2, alpha=0.5)
+        self.canvas.draw_idle()
 
         # サイドバーのラベルにテキストを設定
-        display_text = f"Sec: {sec:.3f}\nFrame: {frame}\nVAD: {val_vad:.2f}\nAVE: {val_vad_ave:.2f}\nSLOPE: {val_vad_slope:.2f}\nACCEL:{val_vad_accel:.2f}"
+        display_text = f"Sec: {sec:12.3f}\nFrame: {frame:12}\nVAD: {val_vad:12.2f}\nAVE: {val_vad_ave:12.2f}\nSLOPE: {val_vad_slope:12.2f}\nAccel:{val_vad_accel:12.2f}"
         self.display_label.config(text=display_text)
-
-        self.canvas.draw()
 
     def _on_release(self, event):
         self._press_x = None
@@ -237,11 +309,84 @@ class SttDataPlotter(ttk.Frame):
             return
 
         self.ax1.set_xlim(xmin,xmax)
-        self.ax1.set_xlim(xmin,xmax)
+        #self.ax1.set_xlim(xmin,xmax)
         self.canvas.draw()
 
     def get_xlim(self):
         return self.ax1.get_xlim()
+
+    def show_fft_spectrum(self):
+        stt_data:SttData = self._stt_Data
+        if stt_data is None or stt_data.audio is None:
+            print("ファイルが選択されていません")
+            return
+        # FFTの実行
+        st_sec, ed_sec = self.ax1.get_xlim()
+        st = max(0, int(st_sec * stt_data.sample_rate) - stt_data.start)
+        ed = min( len(stt_data.audio), int(ed_sec * stt_data.sample_rate) - stt_data.start )
+
+        raw:np.ndarray = stt_data.raw[st:ed] if stt_data.raw is not None else None
+        audio:np.ndarray = stt_data.audio[st:ed] if stt_data.audio is not None else None
+
+        # 新しいウィンドウでプロットを表示
+        root = self
+        while not isinstance(root,tk.Tk):
+            try:
+                if root.master is None:
+                    break
+                root = root.master
+            except:
+                break
+        new_window = tk.Toplevel(root)
+        new_window.title("FFT Spectrum")
+        new_window.geometry('800x600')
+        fftplt = FFTplot(new_window, raw, audio, stt_data.sample_rate)
+        fftplt.pack( side=tk.TOP, fill='both', expand=True)
+
+    def play_audio(self):
+        self.play_audiox(False)
+
+    def play_raw(self):
+        self.play_audiox(True)
+
+    def play_audiox(self,b):
+        stt_data:SttData = self._stt_Data
+        if stt_data is None:
+            print("stt_data is None")
+            return
+        st_sec, ed_sec = self.get_xlim()
+        if b:
+            audio = stt_data.raw
+        else:
+            audio = stt_data.audio
+        if audio is None:
+            print("stt_data is None")
+            return
+
+        st = max(0, int(st_sec * stt_data.sample_rate) - stt_data.start)
+        ed = min( len(audio), int(ed_sec * stt_data.sample_rate) - stt_data.start )
+        bb = audio_to_wave_bytes( audio[st:ed], sample_rate=stt_data.sample_rate)
+        xx = BytesIO(bb)
+        pygame.mixer.init()
+        pygame.mixer.music.load(xx)
+        pygame.mixer.music.play()
+
+    def stop_audio(self):
+        pygame.mixer.music.stop()
+
+    def save_audio(self):
+        stt_data:SttData = self._stt_Data
+        file_path = stt_data.filepath
+        if stt_data is not None and stt_data.audio is not None:
+            st_sec, ed_sec = self.get_xlim()
+            file_name, _ = os.path.splitext(os.path.basename(file_path)) if file_path is not None else None
+            files = [('Wave Files', '*.wav'),('All Files', '*.*')]  
+            out = filedialog.asksaveasfilename( filetypes=files, initialdir=self.dir_path, initialfile=file_name, confirmoverwrite=True, defaultextension=files )
+            st = max(0, int(st_sec * stt_data.sample_rate) - stt_data.start)
+            ed = min( len(stt_data.audio), int(ed_sec * stt_data.sample_rate) - stt_data.start )
+            audio_to_wave( out, stt_data.audio[st:ed], samplerate=stt_data.sample_rate)
+        else:
+            print("ファイルが選択されていません")
 
 def lowpass(x, samplerate, fpass, fstop, gpass, gstop):
     fn = samplerate / 2   #ナイキスト周波数
@@ -261,10 +406,10 @@ def hipass(x, samplerate, fpass, fstop, gpass, gstop):
     y = signal.filtfilt(b, a, x)    #信号に対してフィルタをかける
     return y  
 
-class FFTplot:
+class FFTplot(ttk.Frame):
 
     def __init__(self,parent, raw:np.ndarray, audio:np.ndarray, sampling_rate:int ):
-
+        super().__init__(parent)
         self._sampling_rate:int = sampling_rate
         self._raw:np.ndarray = raw
         self._raw_x = None
@@ -275,8 +420,7 @@ class FFTplot:
         self._cut_x = None
         self._cut_y = None
 
-        self.parent = parent
-        self.frame = ttk.Frame( parent )
+        self.frame = ttk.Frame( self )
         toolbar = ttk.Frame( self.frame )
         toolbar.pack( side=tk.TOP )
 
@@ -314,8 +458,7 @@ class FFTplot:
         self.prev_ck2=None
         self.prev_ck3=None
 
-    def pack(self, *args, **kwargs ):
-        self.frame.pack( *args, **kwargs )
+        self.frame.pack( fill=tk.BOTH, expand=True )
         self._plot()
 
     def _on_scale_changed(self,*args):
@@ -431,11 +574,6 @@ class SttDataTable(ttk.Frame):
 
         self.tree.pack( side=tk.LEFT, fill=tk.BOTH, expand=True )
         self.v_scroll.pack(side=tk.RIGHT, fill="y")
-
-    # def pack(self,*args,**kwargs):
-    #     self.frame.pack( *args, **kwargs )
-    #     self.tree.pack( side=tk.LEFT, fill=tk.BOTH, expand=True )
-    #     self.v_scroll.pack(side=tk.RIGHT, fill="y")
 
     def bind(self, fn ):
         self._ev_on_select = fn
