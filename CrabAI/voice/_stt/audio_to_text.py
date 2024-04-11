@@ -3,6 +3,7 @@ from threading import Thread, Condition
 from queue import Queue, Empty
 import time
 from logging import getLogger
+import numpy as np
 
 try:
     from faster_whisper import WhisperModel
@@ -136,6 +137,10 @@ class AudioToText:
                         self.callback( SttData( SttData.Start, stt_data.utc, stt_data.start, stt_data.start, stt_data.sample_rate, seq=stt_data.seq) )
                     audio = stt_data.audio
                     if len(audio)>0:
+                        # 音量調整
+                        peek = np.max(audio)
+                        if peek<0.8:
+                            audio = audio * (0.8/peek)
                         t0 = time.time()
                         if self.model=="whisper":
                             segments, info = self.whisper_model.transcribe( audio, beam_size=1, best_of=2, temperature=0, language='ja', condition_on_previous_text='まいど！' )

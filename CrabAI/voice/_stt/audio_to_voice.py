@@ -90,6 +90,8 @@ class AudioToVoice:
         elif 'save_path'==key:
             if isinstance(val,str):
                 self.save_path = val
+        else:
+            self.audio_to_segment[key] = val
 
     def update(self,arg=None,**kwargs):
         upd = {}
@@ -155,13 +157,25 @@ class AudioToVoice:
                     continue
                 #
                 if SttData.Segment==stt_data.typ or SttData.PreSegment == stt_data.typ:
-                    w = stt_data.end - stt_data.start
-                    if w<1:
-                        logger.debug(f"seg_to_voice {no} ignore len:{w}")
+                    stt_length = stt_data.end - stt_data.start
+                    if stt_length<1:
+                        logger.debug(f"seg_to_voice {no} ignore len:{stt_length}")
                         self._PrioritizedCallback(stt_data,True)
                         continue
-                    if stt_data.audio is not None:
-                        var = voice_per_audio_rate( stt_data.audio, sampling_rate=16000 )
+                    stt_audio = stt_data.audio
+                    if stt_audio is not None:
+                        # 音量調整
+                        peek = np.max(stt_audio)
+                        if peek<0.8:
+                            stt_audio = stt_audio * (0.8/peek)
+                        # 判定する範囲
+                        hist_vad:np.ndarray = stt_data['vad']
+                        fz:int = stt_length // len(hist_vad)
+                        center:int = hist_vad.argmax() * fz
+                        ast = max( 0, center - int(self.vosk_max_len*0.3) )
+                        aed = min( len(stt_audio), ast + self.vosk_max_len )
+                        # FFT判定
+                        var = voice_per_audio_rate( stt_audio[ast:aed], sampling_rate=16000 )
                         if var<self._var3:
                             print(f"reject {no} voice/audio {var}")
                             logger.debug(f"reject {no} voice/audio {var}")
@@ -170,21 +184,21 @@ class AudioToVoice:
                         print( f"accept {no} voice/audio {var}" )
                     #
                     if self.vad_vosk and vosk is not None:
-                        audo_sec = w/stt_data.sample_rate
+                        audo_sec = stt_length/stt_data.sample_rate
                         vosk_sec = time.time()
-                        audio_i16:np.ndarray = stt_data.audio[:self.vosk_max_len] * 32767.0
+                        audio_i16:np.ndarray = stt_audio[ast:aed] * 32767.0
                         vosk.AcceptWaveform( audio_i16.astype( np.int16 ).tobytes() )
                         vosk_res = json.loads( vosk.FinalResult())
                         vosk.Reset()
                         vosk_sec = time.time() - vosk_sec
                         txt = vosk_res.get('text')
+                        print( f"seg_to_voice {no} vosk result {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
                         if txt in ignore_list:
                             # if txt is None or txt!='': # or stt_data.typ==SttData.PreSegment:
-                            print( f"seg_to_voice {no} vosk ignore {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
                             logger.debug( f"seg_to_voice {no} vosk ignore {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
                             self._PrioritizedCallback(stt_data,True)
                             continue
-                        logger.debug( f"seg_to_voice {no} vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                        logger.debug( f"seg_to_voice {no} vosk accept {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
 
                     if SttData.Segment == stt_data.typ:
                         stt_data.typ = SttData.Voice

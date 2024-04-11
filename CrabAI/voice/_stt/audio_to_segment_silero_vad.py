@@ -73,7 +73,7 @@ class AudioToSegmentSileroVAD:
         self.up_trig:float = 0.5
         self.dn_trig:float = 0.45
         self.ignore_length:int = int( 0.1 * self.sample_rate ) # 発言とみなす最低時間
-        self.min_speech_length:int = int( 0.6 * self.sample_rate )
+        self.min_speech_length:int = int( 0.4 * self.sample_rate )
         self.max_speech_length:int = int( 4.0 * self.sample_rate )
         self.post_speech_length:int = int( 0.4 * self.sample_rate ) 
         self.max_silent_length:int = int( 0.8 * self.sample_rate )  # 発言終了とする無音時間
@@ -113,14 +113,17 @@ class AudioToSegmentSileroVAD:
         # 人の声のフィルタリング（バンドパスフィルタ）
         # self.sos = scipy.signal.butter( 4, [100, 2000], 'bandpass', fs=self.sample_rate, output='sos')
         # ハイパスフィルタ
-        fpass = 60
-        fstop = 5
-        gpass = 3
-        gstop = 60
+        self.fpass = 50
+        self.fstop = 10
+        self.gpass = 10
+        self.gstop = 90
+        self._update_butter()
+
+    def _update_butter(self):
         fn = self.sample_rate / 2   #ナイキスト周波数
-        wp = fpass / fn  #ナイキスト周波数で通過域端周波数を正規化
-        ws = fstop / fn  #ナイキスト周波数で阻止域端周波数を正規化
-        N, Wn = signal.buttord(wp, ws, gpass, gstop)  #オーダーとバターワースの正規化周波数を計算
+        wp = self.fpass / fn  #ナイキスト周波数で通過域端周波数を正規化
+        ws = self.fstop / fn  #ナイキスト周波数で阻止域端周波数を正規化
+        N, Wn = signal.buttord(wp, ws, self.gpass, self.gstop)  #オーダーとバターワースの正規化周波数を計算
         # self.b, self.a = signal.butter(N, Wn, "high")   #フィルタ伝達関数の分子と分母を計算
         self.sos = signal.butter(N, Wn, "high", output='sos')   #フィルタ伝達関数の分子と分母を計算
 
@@ -138,10 +141,18 @@ class AudioToSegmentSileroVAD:
             return self.dn_trig
         elif 'var1'==key:
             return self.var1
+        elif 'fpass'==key:
+            return self.fpass
+        elif 'fstop'==key:
+            return self.fstop
+        elif 'gpass'==key:
+            return self.gpass
+        elif 'gstop'==key:
+            return self.gstop
         return None
 
     def to_dict(self)->dict:
-        keys = ['vad.pick','vad.up','vad.dn','var1']
+        keys = ['vad.pick','vad.up','vad.dn','var1','fpass','fstop','gpass','gstop']
         ret = {}
         for key in keys:
             ret[key] = self[key]
@@ -149,17 +160,33 @@ class AudioToSegmentSileroVAD:
 
     def __setitem__(self,key,val):
         if 'vad.pick'==key:
-            if isinstance(val,(int,float)) and 0<=key<=1:
-                self.pick_trig = float(key)
+            if isinstance(val,(int,float)) and 0<=val<=1:
+                self.pick_trig = float(val)
         elif 'vad.up'==key:
-            if isinstance(val,(int,float)) and 0<=key<=1:
-                self.up_trig = float(key)
+            if isinstance(val,(int,float)) and 0<=val<=1:
+                self.up_trig = float(val)
         elif 'vad.dn'==key:
-            if isinstance(val,(int,float)) and 0<=key<=1:
-                self.dn_trig = float(key)
+            if isinstance(val,(int,float)) and 0<=val<=1:
+                self.dn_trig = float(val)
         elif 'var1'==key:
-            if isinstance(val,(int,float)) and 0<=key<=1:
-                self.var1 = float(key)
+            if isinstance(val,(int,float)) and 0<=val<=1:
+                self.var1 = float(val)
+        elif 'fpass'==key:
+            if isinstance(val,(int,float)):
+                self.fpass = float(val)
+                self._update_butter()
+        elif 'fstop'==key:
+            if isinstance(val,(int,float)):
+                self.fstop = float(val)
+                self._update_butter()
+        elif 'gpass'==key:
+            if isinstance(val,(int,float)):
+                self.gpass = float(val)
+                self._update_butter()
+        elif 'gstop'==key:
+            if isinstance(val,(int,float)):
+                self.gstop = float(val)
+                self._update_butter()
 
     def update(self,arg=None,**kwargs):
         upd = {}

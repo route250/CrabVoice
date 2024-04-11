@@ -137,12 +137,10 @@ class SttDataPlotter(ttk.Frame):
         self.y_vad_ave = vad_ave
 
         vad_slope = stt_data['vad_slope']
-        self.y_vad_slope = vad_slope
-        vad_slope = ( (vad_slope * 2 ) + 0.5 ) if vad_slope is not None else None
+        self.y_vad_slope = ( (vad_slope * 2 ) + 0.5 ) if vad_slope is not None else None
 
         vad_accel = stt_data['vad_accel']
-        self.y_vad_accel = vad_accel
-        vad_accel = ( (vad_accel * 2 ) + 0.5 ) if vad_accel is not None else None
+        self.y_vad_accel = ( (vad_accel * 2 ) + 0.5 ) if vad_accel is not None else None
 
         var = hists['var']
         self.y_var = var
@@ -251,6 +249,13 @@ class SttDataPlotter(ttk.Frame):
 
         self.canvas.draw_idle()
 
+    def _get_value(self, key, index, default=None ):
+        if self._stt_Data is not None:
+            y = self._stt_Data[key]
+            if y is not None:
+                return y[index]
+        return default
+
     def _on_press(self, event):
 
         if event.inaxes != self.ax1 and event.inaxes != self.ax3:  # クリックされた場所がプロットエリア外であれば何もしない
@@ -265,10 +270,11 @@ class SttDataPlotter(ttk.Frame):
         frame = self.x_frame[index]
 
         # 対応するVAD、VAD_AVE、VAD_SLOPEの値を取得
-        val_vad = self.y_vad[index] if self.y_vad is not None else 'N/A'
-        val_vad_ave = self.y_vad_ave[index] if self.y_vad_ave is not None else 'N/A'
-        val_vad_slope = self.y_vad_slope[index] if self.y_vad_slope is not None else 'N/A'
-        val_vad_accel = self.y_vad_accel[index] if self.y_vad_accel is not None else 'N/A'
+        y = self._stt_Data['vad']
+        val_vad = self._get_value('vad',index,'N/A')
+        val_vad_ave = self._get_value('vad_ave',index,'N/A')
+        val_vad_slope = self._get_value('vad_slope',index,'N/A')
+        val_vad_accel = self._get_value('vad_accel',index,'N/A')
 
         # 前回の垂直線とテキストがあれば消去
         if hasattr(self, '_vline'):
