@@ -66,6 +66,7 @@ POST_TPULSE=5
 
 class AudioToSegmentSileroVAD:
     """音声の区切りを検出する"""
+    DEFAULT_BUTTER = [ 50, 10, 10, 90 ] # fpass, fstop, gpass, gstop
     def __init__(self, *, callback, sample_rate:int=16000 ):
         # 設定
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
@@ -113,24 +114,22 @@ class AudioToSegmentSileroVAD:
         # 人の声のフィルタリング（バンドパスフィルタ）
         # self.sos = scipy.signal.butter( 4, [100, 2000], 'bandpass', fs=self.sample_rate, output='sos')
         # ハイパスフィルタ
-        self.fpass = 50
-        self.fstop = 10
-        self.gpass = 10
-        self.gstop = 90
+        self._butter = AudioToSegmentSileroVAD.DEFAULT_BUTTER
         self._update_butter()
 
     def _update_butter(self):
+        fpass, fstop, gpass, gstop = self._butter
         fn = self.sample_rate / 2   #ナイキスト周波数
-        wp = self.fpass / fn  #ナイキスト周波数で通過域端周波数を正規化
-        ws = self.fstop / fn  #ナイキスト周波数で阻止域端周波数を正規化
-        N, Wn = signal.buttord(wp, ws, self.gpass, self.gstop)  #オーダーとバターワースの正規化周波数を計算
+        wp = fpass / fn  #ナイキスト周波数で通過域端周波数を正規化
+        ws = fstop / fn  #ナイキスト周波数で阻止域端周波数を正規化
+        N, Wn = signal.buttord(wp, ws, gpass, gstop)  #オーダーとバターワースの正規化周波数を計算
         # self.b, self.a = signal.butter(N, Wn, "high")   #フィルタ伝達関数の分子と分母を計算
         self.sos = signal.butter(N, Wn, "high", output='sos')   #フィルタ伝達関数の分子と分母を計算
 
     def hipass(self,x):
         #y = signal.filtfilt(self.b, self.a, x) #信号に対してフィルタをかける
-        y = signal.sosfiltfilt( self.sos, x ) #信号に対してフィルタをかける
-        return y  
+        y:np.ndarray = signal.sosfiltfilt( self.sos, x ) #信号に対してフィルタをかける
+        return y.astype(np.float32)
 
     def __getitem__(self,key):
         if 'vad.pick'==key:
@@ -139,20 +138,14 @@ class AudioToSegmentSileroVAD:
             return self.up_trig
         elif 'vad.dn'==key:
             return self.dn_trig
-        elif 'var1'==key:
+        elif 'vad.var1'==key:
             return self.var1
-        elif 'fpass'==key:
-            return self.fpass
-        elif 'fstop'==key:
-            return self.fstop
-        elif 'gpass'==key:
-            return self.gpass
-        elif 'gstop'==key:
-            return self.gstop
+        elif 'vad.butter'==key:
+            return self._butter
         return None
 
     def to_dict(self)->dict:
-        keys = ['vad.pick','vad.up','vad.dn','var1','fpass','fstop','gpass','gstop']
+        keys = ['vad.pick','vad.up','vad.dn','vad.var1','vad.butter' ]
         ret = {}
         for key in keys:
             ret[key] = self[key]
@@ -168,24 +161,12 @@ class AudioToSegmentSileroVAD:
         elif 'vad.dn'==key:
             if isinstance(val,(int,float)) and 0<=val<=1:
                 self.dn_trig = float(val)
-        elif 'var1'==key:
+        elif 'vad.var1'==key:
             if isinstance(val,(int,float)) and 0<=val<=1:
                 self.var1 = float(val)
-        elif 'fpass'==key:
-            if isinstance(val,(int,float)):
-                self.fpass = float(val)
-                self._update_butter()
-        elif 'fstop'==key:
-            if isinstance(val,(int,float)):
-                self.fstop = float(val)
-                self._update_butter()
-        elif 'gpass'==key:
-            if isinstance(val,(int,float)):
-                self.gpass = float(val)
-                self._update_butter()
-        elif 'gstop'==key:
-            if isinstance(val,(int,float)):
-                self.gstop = float(val)
+        elif 'vad.butter'==key:
+            if isinstance(val,list) and len(val)==4 and all(isinstance(v, (int,float)) for v in val):
+                self._butter = list(map(float, val))
                 self._update_butter()
 
     def update(self,arg=None,**kwargs):
@@ -434,10 +415,10 @@ class AudioToSegmentSileroVAD:
 
             b = self.seg_buffer.to_index( start_pos )
             e = self.seg_buffer.to_index( end_pos )
-            audio = self.seg_buffer.to_numpy( b, e )
-            stt_data.audio = audio
             raw = self.raw_buffer.to_numpy( b, e )
             stt_data.raw = raw
+            audio = self.hipass(raw)
+            stt_data.audio = audio
 
             b = self.hists.to_index( start_pos // self.frame_size )
             e = self.hists.to_index( end_pos//self.frame_size )

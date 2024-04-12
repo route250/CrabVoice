@@ -23,9 +23,9 @@ def _getvalue(entry):
     except ValueError:
         return None
 
-def _setvalue(entry,value):
-    entry.delete(0, tk.END)
-    entry.insert(0, value )
+def _setvalue(ent,value):
+    ent.delete(0, tk.END)
+    ent.insert(0, value )
 
 class Application(tk.Tk):
     def __init__(self):
@@ -54,12 +54,12 @@ class Application(tk.Tk):
         self.load_button.pack(side=tk.LEFT)
 
         self.fn_text = ttk.Label( self.button_frame, text="..." )
-        self.fn_text.pack(side=tk.LEFT)
+        self.fn_text.pack(side=tk.LEFT, padx=1)
 
         # fpassの設定
-        ttk.Label(self.button_frame, text="fpass:").pack(side=tk.LEFT)
-        self.fpass_entry = ttk.Entry(self.button_frame,width=4)
-        self.fpass_entry.pack(side=tk.LEFT, padx=5)
+        ttk.Label(self.button_frame, text="fpass:").pack(side=tk.LEFT,ipadx=5)
+        self.fpass_entry = ttk.Entry(self.button_frame, width=4)
+        self.fpass_entry.pack(side=tk.LEFT, padx=1)
         
         # fstopの設定
         ttk.Label(self.button_frame, text="fstop:").pack(side=tk.LEFT)
@@ -76,6 +76,10 @@ class Application(tk.Tk):
         self.gstop_entry = ttk.Entry(self.button_frame,width=4)
         self.gstop_entry.pack(side=tk.LEFT, padx=5)
 
+        stt:AudioToText = AudioToText(callback=None)
+        fpass, fstop, gpass, gstop = stt['vad.butter']
+        self._set_butter( fpass, fstop, gpass, gstop )
+
         # 実行ボタン
         self.run_button = ttk.Button(self.button_frame, text='実行', command=self.run_analysis)
         self.run_button.pack(side=tk.LEFT)
@@ -88,6 +92,12 @@ class Application(tk.Tk):
         # 音声波形グラフ
         self.plot1 = SttDataPlotter(self)
         self.plot1.pack(fill=tk.BOTH, expand=True)
+
+    def _set_butter(self, fpass, fstop, gpass, gstop ):
+        _setvalue(self.fpass_entry,fpass)
+        _setvalue(self.fstop_entry,fstop)
+        _setvalue(self.gpass_entry,gpass)
+        _setvalue(self.gstop_entry,gstop)
 
     def on_close(self):
         self.running = False  # runningフラグをFalseに設定してループを停止
@@ -118,34 +128,22 @@ class Application(tk.Tk):
             print(f"ファイルが選択されました: {self.filename}")
             filename_only = os.path.basename(self.filename)
             self.fn_text.configure(text=filename_only)
+            self.plot(None)
+            self.table.clear()
 
     # 音声解析関数
     def analysis_audio(self):
         self.stt:AudioToText = AudioToText( callback=self.update_result )
 
-        fpass = _getvalue(self.fpass_entry)
-        if fpass is not None:
-            self.stt['fpass'] = fpass
-        else:
-            _setvalue(self.fpass_entry,self.stt['fpass'])
-
-        fstop = _getvalue(self.fstop_entry)
-        if fstop is not None:
-            self.stt['fstop'] = fstop
-        else:
-            _setvalue(self.fstop_entry,self.stt['fstop'])
-                      
-        gpass = _getvalue(self.gpass_entry)
-        if gpass is not None:
-            self.stt['gpass'] = gpass
-        else:
-            _setvalue(self.gpass_entry,self.stt['gpass'])
-
-        gstop = _getvalue(self.gstop_entry)
-        if gstop is not None:
-            self.stt['gstop'] = gstop
-        else:
-            _setvalue(self.gstop_entry,self.stt['gstop'])
+        butter = self.stt['vad.butter']
+        for idx, ent in enumerate( [ self.fpass_entry, self.fstop_entry, self.gpass_entry, self.gstop_entry ] ):
+            try:
+                val = float(ent.get())
+                butter[idx] = val
+            except ValueError:
+                ent.delete(0, tk.END)
+                ent.insert(0, butter[idx] )
+        self.stt['vad.butter'] = butter
 
         self.stt.load( filename=self.filename )
         self.stt.start()
