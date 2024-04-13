@@ -114,7 +114,7 @@ class PromptFactory:
             logger.exception('can not update profile')
 
     def update_profile(self, result_dict:str ):
-        funcs = result_dict.get( PromptFactory.K_FUNCS)
+        funcs = result_dict.get( PromptFactory.K_FUNCS) if isinstance(result_dict,dict) else None
         request_text = funcs.get( PromptFactory.K_UPDATE_PROF,'') if isinstance(funcs,dict) else None
         if request_text and request_text!="None" and request_text!="null" and request_text!="未設定":
             return self.feedback(request_text)
