@@ -106,7 +106,7 @@ class TtsEngine:
         self._voicevox_list = list(set([os.getenv('VOICEVOX_HOST','127.0.0.1'),'127.0.0.1','192.168.0.104','chickennanban.ddns.net','chickennanban1.ddns.net','chickennanban2.ddns.net','chickennanban3.ddns.net']))
         self._katakana_dir = katakana_dir
 
-        self.feed = create_tone( 32, time=0.4, volume=0.01, sample_rate=16000)
+        self.feed = create_tone( 32, time=0.4, volume=0.9, sample_rate=16000)
         self.feed_wave = audio_to_wave_bytes(self.feed, sample_rate=16000 )
         self.sound_listen_in = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ce", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound_listen_out = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ec", sampling_rate=16000 ))), sample_rate=16000 )

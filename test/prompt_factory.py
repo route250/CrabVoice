@@ -262,6 +262,25 @@ class PromptFactory:
 
         return text
 
+    def create_total_promptA( self ):
+        text = ""
+        # プロンプト
+        text += "# プロンプト"
+        text += PromptFactory.create_format_description( self.prompt_dict )
+        text += "\n\n"
+        # 返信フォーマット
+        text += "# 出力項目"
+        text += PromptFactory.create_format_description( self.response_fmt )
+        text += "\n\n"
+        text += "# 出力フォーマット:JSON"
+        text += "\n"
+        text += PromptFactory.create_format_skelton( self.response_fmt )
+        text += "\n"
+        #変数置換
+        text = self.replaces(text)
+
+        return text
+
     @staticmethod
     def get_prompt_item( input:list, name, default=None ):
         if isinstance(input,list):
@@ -467,7 +486,7 @@ def get_response_from_openai(user_input):
     openai_max_tokens = 1000  # 応答の最大長
     # プロンプトを作ります
     pf:PromptFactory = PromptFactory( prompt_dict, response_fmt )
-    pmt = pf.create_total_prompt()
+    pmt = pf.create_total_promptA()
 
     # リクエストを作ります
     local_messages = []
