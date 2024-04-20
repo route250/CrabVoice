@@ -3,6 +3,8 @@ from threading import Thread, Condition
 from queue import Queue, Empty
 import time
 from logging import getLogger
+from urllib.error import URLError, HTTPError
+
 import numpy as np
 
 try:
@@ -148,7 +150,13 @@ class AudioToText:
                             for segment in segments:
                                 text = text + "//" + segment.text
                         else:
-                            text, confidence = RecognizerGoogle.recognize( audio, sample_rate=16000 )
+                            try:
+                                text, confidence = RecognizerGoogle.recognize( audio, sample_rate=16000 )
+                            except (HTTPError,URLError,TimeoutError) as ex:
+                                logger.error( f"recognize {self.model} {str(ex)}")
+                                stt_data.typ = SttData.NetErr
+                                self.callback(stt_data)
+                                continue
                         t1 = time.time()
                         logger.debug( f"recognize {self.model} time {t1-t0:.4f}/{len(audio)/self.sample_rate:.4f}(sec)")
                     else:

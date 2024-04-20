@@ -343,6 +343,7 @@ def main():
                     logger.exception('')
             if len(assistant_content)==0:
                 logger.error(f"[LLM] no response?? {result_dict}")
+                speech.tts.play_error2()
             speech.add_talk(VoiceTalkEngine.EOT)
             # print( "chat response" )
             # print( assistant_response )
@@ -362,7 +363,7 @@ def test():
     time.sleep(1)
     e.play_listen_out()
     time.sleep(1)
-    e.play_beep3()
+    e.play_error1()
     time.sleep(1)
 
 def test2():

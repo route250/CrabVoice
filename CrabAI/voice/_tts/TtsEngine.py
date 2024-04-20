@@ -110,7 +110,8 @@ class TtsEngine:
         self.feed_wave = audio_to_wave_bytes(self.feed, sample_rate=16000 )
         self.sound_listen_in = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ce", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound_listen_out = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ec", sampling_rate=16000 ))), sample_rate=16000 )
-        self.sound3 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "O3AA", sampling_rate=16000 ))), sample_rate=16000 )
+        self.sound_error1 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t240v15 O3aa", sampling_rate=16000 ))), sample_rate=16000 )
+        self.sound_error2 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v15 O3aaa", sampling_rate=16000 ))), sample_rate=16000 )
 
     def __getitem__(self,key):
         if 'speaker.id'==key:
@@ -464,14 +465,18 @@ class TtsEngine:
     def play_listen_out(self):
         self._play_beep( self.sound_listen_out )
 
-    def play_beep3(self):
-        self._play_beep( self.sound3 )
+    def play_error1(self):
+        self._play_beep( self.sound_error1 )
+
+    def play_error2(self):
+        self._play_beep( self.sound_error2 )
 
     def _play_beep(self, snd ):
         try:
             self._sound_init()
             if self.beep_ch is not None:
-                self.beep_ch.stop()
+                while self.beep_ch.get_busy():
+                    pygame.time.delay(200)
             wb: BytesIO = BytesIO( snd )
             wb.seek(0)
             sound = pygame.mixer.Sound( wb )

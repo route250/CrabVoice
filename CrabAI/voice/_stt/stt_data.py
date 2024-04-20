@@ -55,6 +55,7 @@ class SttData:
     Text:int=9
     Term:int=100
     Dump:int=700
+    NetErr:int=900
 
     def __init__(self, typ:int, utc:float, start:int, end:int, sample_rate:int, raw=None, audio=None, hists=None, content:str=None, tag:str=None, seq=0, filepath=None):
         self.utc:float = float(utc)
@@ -90,6 +91,8 @@ class SttData:
             return "Term"        
         elif SttData.Dump==typ:
             return "Dump"        
+        elif SttData.NetErr==typ:
+            return "NetErr"        
 
     def __str__(self) ->str:
         st_sec = self.start/self.sample_rate

@@ -154,6 +154,9 @@ class VoiceTalkEngine:
             copy_confidence = self.text_confidence = confidence
         elif SttData.Dump==typ:
             return
+        elif SttData.NetErr==typ:
+            self.tts.play_error1()
+            return
         else:
             logger.info( f"[STT] {start_sec:.3f} - {end_sec:.3f} {stat} {texts} {confidence} EOT")
             return
