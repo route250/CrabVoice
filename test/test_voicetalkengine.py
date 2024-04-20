@@ -6,7 +6,7 @@ import sounddevice as sd
 import numpy as np
 import openai
 from openai import OpenAI
-from httpx import ReadTimeout
+from httpx import Timeout,TimeoutException,HTTPError
 
 import logging
 logger = logging.getLogger('voice')
@@ -278,13 +278,13 @@ def main():
             request_messages.append( {'role':'user','content':text})
             messages.append( {'role':'user','content':text})
 
-            openai_timeout=15.0
-            openai_max_retries=2
-            gen=3
-            while gen>=0:
-                gen -= 1
+            openai_timeout:Timeout = Timeout(15, connect=4, write=10, read=15.0)
+            openai_max_retries=3
+            completions_cnt=3
+            net_count=openai_max_retries
+            while completions_cnt>0 and net_count>0:
                 try:
-                    client:OpenAI = OpenAI(timeout=openai_timeout,max_retries=openai_max_retries)
+                    client:OpenAI = OpenAI(timeout=openai_timeout,max_retries=1)
                     stream = client.chat.completions.create(
                             messages=request_messages,
                             model=openai_llm_model, max_tokens=1000, temperature=0.7,
@@ -334,16 +334,38 @@ def main():
                     if talk_buffer:
                         speech.add_talk(talk_buffer)
                     if len(assistant_content)>0:
-                        gen=-1
-                except openai.APIConnectionError as ex:
-                    logger.error("Cannot connect to openai: {ex}")
-                except ReadTimeout:
-                    logger.error("read timeout to OpenAI")
+                        completions_cnt=0
+                    else:
+                        speech.tts.play_error2()
+                        text = "えーっと、"
+                        speech.add_talk(text)
+                        request_messages.append( {'role':'assistant','content':text})
+                        completions_cnt-=1
+                except (TimeoutException,openai.APITimeoutError,openai.APIConnectionError) as ex:
+                    net_count -= 1
+                    logger.error(f"[OpenAI] {ex.__class__.__name__}  {ex}")
+                    speech.tts.play_error2()
+                except openai.RateLimitError as ex:
+                    logger.error(f"[OpenAI] {ex.__class__.__name__} {ex}")
+                    speech.tts.play_error2()
+                    time.sleep(1.0)
+                except openai.APIStatusError as ex:
+                    logger.error(f"[OpenAI] {ex.__class__.__name__} {ex.status_code} {ex.message}")
+                    speech.tts.play_error2()
+                    net_count = 0
+                    completions_cnt = 0
+                except (HTTPError,openai.APIError) as ex:
+                    logger.error(f"[OpenAI] {ex.__class__.__name__} {ex}")
+                    speech.tts.play_error2()
+                    net_count = 0
+                    completions_cnt = 0
                 except:
-                    logger.exception('')
+                    logger.exception('[OpenAI]')
+                    speech.tts.play_error2()
+                    net_count = 0
+                    completions_cnt = 0
             if len(assistant_content)==0:
                 logger.error(f"[LLM] no response?? {result_dict}")
-                speech.tts.play_error2()
             speech.add_talk(VoiceTalkEngine.EOT)
             # print( "chat response" )
             # print( assistant_response )

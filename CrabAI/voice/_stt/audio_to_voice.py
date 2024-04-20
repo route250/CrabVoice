@@ -164,109 +164,116 @@ class AudioToVoice:
                 except Empty:
                     continue
                 #
-                if SttData.Segment==stt_data.typ or SttData.PreSegment == stt_data.typ:
-                    Accept:bool = None
-                    stt_length = stt_data.end - stt_data.start
-                    stt_audio = stt_data.audio
-                    audo_sec = stt_length/stt_data.sample_rate
+                try:
+                    if SttData.Segment==stt_data.typ or SttData.PreSegment == stt_data.typ:
+                        Accept:bool = None
+                        stt_length = stt_data.end - stt_data.start
+                        stt_audio = stt_data.audio
+                        audo_sec = stt_length/stt_data.sample_rate
 
-                    if stt_length<1 or stt_audio is None:
-                        Accept = False
-                        logger.debug(f"seg_to_voice {no} ignore len:{stt_length}")
-                        print(f"[seg_to_voice] {no} ignore len:{stt_length}")
+                        if stt_length<1 or stt_audio is None:
+                            Accept = False
+                            logger.debug(f"seg_to_voice {no} ignore len:{stt_length}")
+                            print(f"[seg_to_voice] {no} ignore len:{stt_length}")
 
-                    if Accept is None:
-                        # 音量調整
-                        peek = np.max(stt_audio)
-                        if peek<0.8:
-                            stt_audio = stt_audio * (0.8/peek)
+                        if Accept is None:
+                            # 音量調整
+                            peek = np.max(stt_audio)
+                            if peek<0.8:
+                                stt_audio = stt_audio * (0.8/peek)
 
-                    if Accept is None and grammer:
-                        try:
-                            print(f"[set_to_voice] {no} #1-4-1")
-                            vosk.SetLogLevel(1)
+                        if Accept is None and grammer:
+                            try:
+                                print(f"[set_to_voice] {no} #1-4-1")
+                                vosk.SetLogLevel(1)
+                                # 判定する範囲
+                                hist_vad:np.ndarray = stt_data['vad']
+                                fz:int = stt_length // len(hist_vad)
+                                center:int = hist_vad.argmax() * fz
+                                ast = max( 0, center - int(self.vosk_max_len*0.6) )
+                                aed = min( len(stt_audio), ast + self.vosk_max_len*2 )
+                                vosk_sec = time.time()
+                                audio_i16:np.ndarray = stt_audio[ast:aed] * 32767.0
+                                audio_bytes:bytes = audio_i16.astype( np.int16 ).tobytes()
+                                print(f"[set_to_voice] {no} #1-4-2")
+                                grammer.AcceptWaveform( audio_bytes )
+                                print(f"[set_to_voice] {no} #1-4-3")
+                                vosk_res = json.loads( grammer.FinalResult())
+                                grammer.Reset()
+                                vosk_sec = time.time() - vosk_sec
+                                txt = vosk_res.get('text')
+                                if txt in ignore_list:
+                                    logger.debug( f"seg_to_voice {no} reject grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                                    print( f"[seg_to_voice] {no} reject grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                                else:
+                                    Accept = True
+                                    logger.debug( f"seg_to_voice {no} accept grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                                    print( f"[seg_to_voice] {no} accept grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                            except Exception as err:
+                                logger.exception(f"#4 {str(err)}")
+                            finally:
+                                vosk.SetLogLevel(-1)
+                                print(f"[set_to_voice] {no} #1-4-99")
+                        if Accept is None:
                             # 判定する範囲
                             hist_vad:np.ndarray = stt_data['vad']
                             fz:int = stt_length // len(hist_vad)
                             center:int = hist_vad.argmax() * fz
-                            ast = max( 0, center - int(self.vosk_max_len*0.6) )
-                            aed = min( len(stt_audio), ast + self.vosk_max_len*2 )
+
+                        if Accept is None:
+                            ast = max( 0, center - int(self.vosk_max_len*0.3) )
+                            aed = min( len(stt_audio), ast + self.vosk_max_len )
+                            # FFT判定
+                            var = voice_per_audio_rate( stt_audio[ast:aed], sampling_rate=16000 )
+                            if var<self._var3:
+                                Accept = False
+                                logger.debug(f"seg_to_voice {no} reject voice/audio {var}")
+                                print(f"[seg_to_voice] {no} reject voice/audio {var}")
+                            else:
+                                print( f"[seg_to_voice] {no} accept voice/audio {var}" )
+                        #
+                        if Accept is None and self.vad_vosk and vosk2 is not None:
+                            # 判定する範囲
+                            ast = max( 0, center - int(self.vosk_max_len*0.3) )
+                            aed = min( len(stt_audio), ast + self.vosk_max_len )
                             vosk_sec = time.time()
                             audio_i16:np.ndarray = stt_audio[ast:aed] * 32767.0
                             audio_bytes:bytes = audio_i16.astype( np.int16 ).tobytes()
-                            print(f"[set_to_voice] {no} #1-4-2")
-                            grammer.AcceptWaveform( audio_bytes )
-                            print(f"[set_to_voice] {no} #1-4-3")
-                            vosk_res = json.loads( grammer.FinalResult())
-                            grammer.Reset()
+                            vosk2.AcceptWaveform( audio_bytes )
+                            vosk_res = json.loads( vosk2.FinalResult())
+                            vosk2.Reset()
                             vosk_sec = time.time() - vosk_sec
                             txt = vosk_res.get('text')
                             if txt in ignore_list:
-                                logger.debug( f"seg_to_voice {no} reject grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
-                                print( f"[seg_to_voice] {no} reject grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                                logger.debug( f"seg_to_voice {no} reject vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                                print( f"[seg_to_voice] {no} reject vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
                             else:
                                 Accept = True
-                                logger.debug( f"seg_to_voice {no} accept grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
-                                print( f"[seg_to_voice] {no} accept grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
-                        except Exception as err:
-                            logger.exception(f"#4 {str(err)}")
-                        finally:
-                            vosk.SetLogLevel(-1)
-                            print(f"[set_to_voice] {no} #1-4-99")
-                    if Accept is None:
-                        # 判定する範囲
-                        hist_vad:np.ndarray = stt_data['vad']
-                        fz:int = stt_length // len(hist_vad)
-                        center:int = hist_vad.argmax() * fz
+                                logger.debug( f"seg_to_voice {no} accept vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                                print( f"[seg_to_voice] {no} accept vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
 
-                    if Accept is None:
-                        ast = max( 0, center - int(self.vosk_max_len*0.3) )
-                        aed = min( len(stt_audio), ast + self.vosk_max_len )
-                        # FFT判定
-                        var = voice_per_audio_rate( stt_audio[ast:aed], sampling_rate=16000 )
-                        if var<self._var3:
-                            Accept = False
-                            logger.debug(f"seg_to_voice {no} reject voice/audio {var}")
-                            print(f"[seg_to_voice] {no} reject voice/audio {var}")
+                        if Accept is not None and Accept:
+                            if SttData.Segment == stt_data.typ:
+                                stt_data.typ = SttData.Voice
+                            elif SttData.PreSegment == stt_data.typ:
+                                stt_data.typ = SttData.PreVoice
+                            self._PrioritizedCallback(stt_data,False)
                         else:
-                            print( f"[seg_to_voice] {no} accept voice/audio {var}" )
-                    #
-                    if Accept is None and self.vad_vosk and vosk2 is not None:
-                        # 判定する範囲
-                        ast = max( 0, center - int(self.vosk_max_len*0.3) )
-                        aed = min( len(stt_audio), ast + self.vosk_max_len )
-                        vosk_sec = time.time()
-                        audio_i16:np.ndarray = stt_audio[ast:aed] * 32767.0
-                        audio_bytes:bytes = audio_i16.astype( np.int16 ).tobytes()
-                        vosk2.AcceptWaveform( audio_bytes )
-                        vosk_res = json.loads( vosk2.FinalResult())
-                        vosk2.Reset()
-                        vosk_sec = time.time() - vosk_sec
-                        txt = vosk_res.get('text')
-                        if txt in ignore_list:
-                            logger.debug( f"seg_to_voice {no} reject vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
-                            print( f"[seg_to_voice] {no} reject vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
-                        else:
-                            Accept = True
-                            logger.debug( f"seg_to_voice {no} accept vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
-                            print( f"[seg_to_voice] {no} accept vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                            self._PrioritizedCallback(stt_data,True)
 
-                    if Accept is not None and Accept:
-                        if SttData.Segment == stt_data.typ:
-                            stt_data.typ = SttData.Voice
-                        elif SttData.PreSegment == stt_data.typ:
-                            stt_data.typ = SttData.PreVoice
+                    elif SttData.Term==stt_data.typ:
                         self._PrioritizedCallback(stt_data,False)
+                    elif SttData.Dump==stt_data.typ:
+                        self._PrioritizedCallback(stt_data,False)
+                        self._save_audio(stt_data)
                     else:
                         self._PrioritizedCallback(stt_data,True)
-
-                elif SttData.Term==stt_data.typ:
-                    self._PrioritizedCallback(stt_data,False)
-                elif SttData.Dump==stt_data.typ:
-                    self._PrioritizedCallback(stt_data,False)
-                    self._save_audio(stt_data)
-                else:
-                    self._PrioritizedCallback(stt_data,True)
+                    stt_data = None
+                except:
+                    logger.exception("audio to voice")
+                finally:
+                    if stt_data is not None:
+                        self._PrioritizedCallback(stt_data,True)
         except:
             logger.exception("audio to voice")
         finally:

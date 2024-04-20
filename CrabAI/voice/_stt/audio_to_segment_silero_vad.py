@@ -301,19 +301,23 @@ class AudioToSegmentSileroVAD:
                         ignore = int( self.sample_rate * 0.2 )
                         st = ( self.pos[VOICE] + ignore ) // self.frame_size
                         ed = ( end_pos - ignore ) // self.frame_size
-                        split_pos = find_lowest_vad_at_slope_increase( self.hists.hist_vad.to_numpy( st, ed ), 5 )
-                        if split_pos>0:
-                            split_pos = (st+split_pos) * self.frame_size
-                            st_sec = self.pos[VOICE]/self.sample_rate
-                            ed_sec = end_pos/self.sample_rate
-                            split_sec = split_pos/self.sample_rate
-                            print(f"[REC] split {is_speech} {st_sec}-{ed_sec} {split_sec} {seg_len/self.sample_rate}(sec)")
-                            stt_data = SttData( SttData.Segment, utc, self.pos[VPULSE],split_pos, self.sample_rate )
-                            self._flush( stt_data )
-                            self.pos[VPULSE] = split_pos
-                            self.pos[VOICE] = split_pos
+                        hist_vad = self.hists.hist_vas.to_numpy( st, ed )
+                        if len(hist_vad)>0:
+                            split_pos = find_lowest_vad_at_slope_increase( hist_vad, 5 )
+                            if split_pos>0:
+                                split_pos = (st+split_pos) * self.frame_size
+                                st_sec = self.pos[VOICE]/self.sample_rate
+                                ed_sec = end_pos/self.sample_rate
+                                split_sec = split_pos/self.sample_rate
+                                print(f"[REC] split {is_speech} {st_sec}-{ed_sec} {split_sec} {seg_len/self.sample_rate}(sec)")
+                                stt_data = SttData( SttData.Segment, utc, self.pos[VPULSE],split_pos, self.sample_rate )
+                                self._flush( stt_data )
+                                self.pos[VPULSE] = split_pos
+                                self.pos[VOICE] = split_pos
+                            else:
+                                print(f"[REC] failled to split ")
                         else:
-                            print(f"[REC] failled to split ")
+                            logger.error(f"[REC] failled to split self.pos[VOICE]:{self.pos[VOICE]} end_pos:{end_pos} seg_len:{seg_len} ignore:{ignore} [{st}:{ed}]" )
                     else:
                         if is_speech<self.up_trig:
                             self.last_down.push( end_pos, is_speech )
