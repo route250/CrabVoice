@@ -2,9 +2,10 @@ import numpy as np
 import pandas as pd
 from .ring_buffer import RingBuffer
 
-class Hists:
+class AudioFeatureBuffer:
 
-    def __init__(self,capacity):
+    def __init__(self,capacity,window:int=5):
+        self.window:int = ( window//2 )*2 + 1 if window>=3 else 3
         self.capacity:int = int(capacity)
         self.hist_hi:RingBuffer = RingBuffer( self.capacity, dtype=np.float32 )
         self.hist_lo:RingBuffer = RingBuffer( self.capacity, dtype=np.float32 )
@@ -70,7 +71,7 @@ class Hists:
         self.hist_energy.add(energy)
         self.hist_zc.add(zc)
         self.hist_var.add(var)
-        window=5
+        window=self.window
         offset = window//2 - window
         if len(self.hist_vad_ave)+offset>=0:
             rb_frame = self.hist_vad_ave.to_numpy(-window)

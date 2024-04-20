@@ -308,8 +308,13 @@ def main():
                             logger.error( f'response parse error {assistant_response}')
                         #
                         # セリフ取得
-                        personal_dict:dict = result_dict.get( PromptFactory.K_PSEUDO_PERSONAL ) if isinstance(result_dict,dict) else None
-                        talk_text= personal_dict.get(PromptFactory.K_TALK) if isinstance(personal_dict,dict) else ""
+                        talk_text = None
+                        if isinstance(result_dict,dict):
+                            personal_dict:dict = result_dict.get( PromptFactory.K_PSEUDO_PERSONAL )
+                            if isinstance(personal_dict,dict):
+                                talk_text= personal_dict.get(PromptFactory.K_TALK)
+                            else:
+                                talk_text= result_dict.get(PromptFactory.K_TALK)
                         talk_text = talk_text if talk_text else ""
                         #
                         if talk_text and len(talk_text)>len(assistant_content):

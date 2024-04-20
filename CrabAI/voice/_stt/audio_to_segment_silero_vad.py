@@ -10,7 +10,7 @@ import librosa
 from scipy import signal
 from .stt_data import SttData
 from .ring_buffer import RingBuffer
-from .hists import Hists
+from .hists import AudioFeatureBuffer
 from .low_pos import LowPos
 from ..voice_utils import voice_per_audio_rate
 from .silero_vad import SileroVAD
@@ -93,9 +93,11 @@ class AudioToSegmentSileroVAD:
         # 
         self.num_samples:int = 0
         self.last_dump:int = 0
-        self.seg_buffer:RingBuffer = RingBuffer( self.sample_rate * 30, dtype=np.float32 )
+        # AudioFeatureに必要な長さを先に計算
+        self.hists:AudioFeatureBuffer = AudioFeatureBuffer( int(self.sample_rate*30/self.frame_size+0.5) )
+        # AudioFeatureの長さからAudioの長さを計算
+        self.seg_buffer:RingBuffer = RingBuffer( self.hists.capacity*self.frame_size, dtype=np.float32 )
         self.raw_buffer:RingBuffer = RingBuffer( self.seg_buffer.capacity, dtype=np.float32 )
-        self.hists:Hists = Hists( self.seg_buffer.capacity )
         # webrtc-vad
         # SileroVAD
         self.silerovad:SileroVAD = SileroVAD( window_size_samples=self.frame_size, sampling_rate=self.sample_rate )
@@ -398,6 +400,19 @@ class AudioToSegmentSileroVAD:
                     self.rec=VPULSE
                     self.ignore_list.add(end_pos)
                     self.pos[VPULSE] = end_pos
+                else:
+                    # 最後のindex
+                    last_pos = end_pos - self.frame_size*(self.hists.window+1)//2
+                    if last_pos>1:
+                        hlen = self.hists.to_index( last_pos//self.frame_size )
+                        x1 = self.hists.get_vad_slope(hlen-3)
+                        x2 = self.hists.get_vad_slope(hlen-2)
+                        x3 = self.hists.get_vad_slope(hlen-1)
+                        vx=0.01
+                        if x1<vx and vx<=x2 and vx<=x3:
+                            for ih in range(hlen-3,self.hists.to_index( end_pos//self.frame_size) ):
+                                self.hists.hist_color.set(ih,VPULSE)
+                            self.ignore_list.add(last_pos)
 
             self.hists.replace_color( self.rec )
             if (num_samples-self.last_dump)>=self.seg_buffer.capacity:

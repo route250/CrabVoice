@@ -41,7 +41,8 @@ class AudioToVoice:
         self._mute:bool = False # ミュートする
         self._var3:float = 0.45
         self.audio_to_segment:AudioToSegment = AudioToSegment( callback=self._fn_callback )
-        self.vosk: list[KaldiRecognizer] = [None] * len(self._thread)
+        self.vosk_gr: list[KaldiRecognizer] = [None] * len(self._thread)
+        self.vosk2: list[KaldiRecognizer] = [None] * len(self._thread)
         self.vosk_model: vosk.Model = None
         self.vosk_spk: vosk.SpkModel = None
         self.vosk_max_len:int = int(self.sample_rate*1.7)
@@ -103,20 +104,26 @@ class AudioToVoice:
 
     def load(self):
         self.audio_to_segment.load()
-        if self.num_threads>0 and self.vosk[0] is None:
+        if self.num_threads>0 and self.vosk_gr[0] is None:
             if self.vosk_model is None:
                 logger.info( f"load vosk lang model" )
                 self.vosk_model = recognizer_vosk.get_vosk_model(lang="ja")
             # if self.vosk_spk is None:
             #     self.vosk_spk = recognizer_vosk.get_vosk_spk_model(self.vosk_model)
-            for i in range(len(self.vosk)):
+            katakana_grammer:str = recognizer_vosk.get_katakana_grammar()
+            for i in range(len(self.vosk_gr)):
                 logger.info( f"load vosk model {i}" )
+                if katakana_grammer is not None:
+                    vosk: KaldiRecognizer = KaldiRecognizer(self.vosk_model, int(self.sample_rate), katakana_grammer )
+                    # if self.vosk_spk is not None:
+                    #     vosk.SetSpkModel( self.vosk_spk )
+                    self.vosk_gr[i] = vosk
+                else:
+                    self.vosk_gr[i] = None
                 vosk: KaldiRecognizer = KaldiRecognizer(self.vosk_model, int(self.sample_rate) )
                 # if self.vosk_spk is not None:
                 #     vosk.SetSpkModel( self.vosk_spk )
-                vosk.SetWords(False)
-                vosk.SetPartialWords(False)
-                self.vosk[i] = vosk
+                self.vosk2[i] = vosk
 
     def start(self):
         try:
@@ -149,7 +156,8 @@ class AudioToVoice:
         ignore_list = [ None, '', 'ん' ]
         try:
             logger.info(f"seg to voice {no} start")
-            vosk:KaldiRecognizer = self.vosk[no]
+            grammer:KaldiRecognizer = self.vosk_gr[no]
+            vosk2:KaldiRecognizer = self.vosk2[no]
             while True:
                 try:
                     stt_data:SttData = self._queue.get( timeout=1.0 )
@@ -157,54 +165,85 @@ class AudioToVoice:
                     continue
                 #
                 if SttData.Segment==stt_data.typ or SttData.PreSegment == stt_data.typ:
+                    Accept:bool = None
                     stt_length = stt_data.end - stt_data.start
-                    if stt_length<1:
-                        logger.debug(f"seg_to_voice {no} ignore len:{stt_length}")
-                        self._PrioritizedCallback(stt_data,True)
-                        continue
                     stt_audio = stt_data.audio
-                    if stt_audio is not None:
+                    audo_sec = stt_length/stt_data.sample_rate
+
+                    if stt_length<1 or stt_audio is None:
+                        Accept = False
+                        logger.debug(f"seg_to_voice {no} ignore len:{stt_length}")
+                        print(f"[seg_to_voice] {no} ignore len:{stt_length}")
+
+                    if Accept is None:
                         # 音量調整
                         peek = np.max(stt_audio)
                         if peek<0.8:
                             stt_audio = stt_audio * (0.8/peek)
+
+                    if Accept is None and grammer:
+                        vosk_sec = time.time()
+                        audio_i16:np.ndarray = stt_audio * 32767.0
+                        audio_bytes:bytes = audio_i16.astype( np.int16 ).tobytes()
+                        grammer.AcceptWaveform( audio_bytes )
+                        vosk_res = json.loads( grammer.FinalResult())
+                        grammer.Reset()
+                        vosk_sec = time.time() - vosk_sec
+                        txt = vosk_res.get('text')
+                        if txt in ignore_list:
+                            logger.debug( f"seg_to_voice {no} reject grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                            print( f"[seg_to_voice] {no} reject grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                        else:
+                            Accept = True
+                            logger.debug( f"seg_to_voice {no} accept grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                            print( f"[seg_to_voice] {no} accept grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+
+                    if Accept is None:
                         # 判定する範囲
                         hist_vad:np.ndarray = stt_data['vad']
                         fz:int = stt_length // len(hist_vad)
                         center:int = hist_vad.argmax() * fz
+
+                    if Accept is None:
                         ast = max( 0, center - int(self.vosk_max_len*0.3) )
                         aed = min( len(stt_audio), ast + self.vosk_max_len )
                         # FFT判定
                         var = voice_per_audio_rate( stt_audio[ast:aed], sampling_rate=16000 )
                         if var<self._var3:
-                            print(f"reject {no} voice/audio {var}")
-                            logger.debug(f"reject {no} voice/audio {var}")
-                            self._PrioritizedCallback(stt_data,True)
-                            continue
-                        print( f"accept {no} voice/audio {var}" )
+                            Accept = False
+                            logger.debug(f"seg_to_voice {no} reject voice/audio {var}")
+                            print(f"[seg_to_voice] {no} reject voice/audio {var}")
+                        else:
+                            print( f"[seg_to_voice] {no} accept voice/audio {var}" )
                     #
-                    if self.vad_vosk and vosk is not None:
-                        audo_sec = stt_length/stt_data.sample_rate
+                    if Accept is None and self.vad_vosk and vosk2 is not None:
+                        # 判定する範囲
+                        ast = max( 0, center - int(self.vosk_max_len*0.3) )
+                        aed = min( len(stt_audio), ast + self.vosk_max_len )
                         vosk_sec = time.time()
                         audio_i16:np.ndarray = stt_audio[ast:aed] * 32767.0
-                        vosk.AcceptWaveform( audio_i16.astype( np.int16 ).tobytes() )
-                        vosk_res = json.loads( vosk.FinalResult())
-                        vosk.Reset()
+                        audio_bytes:bytes = audio_i16.astype( np.int16 ).tobytes()
+                        vosk2.AcceptWaveform( audio_bytes )
+                        vosk_res = json.loads( vosk2.FinalResult())
+                        vosk2.Reset()
                         vosk_sec = time.time() - vosk_sec
                         txt = vosk_res.get('text')
-                        print( f"seg_to_voice {no} vosk result {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
                         if txt in ignore_list:
-                            # if txt is None or txt!='': # or stt_data.typ==SttData.PreSegment:
-                            logger.debug( f"seg_to_voice {no} vosk ignore {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
-                            self._PrioritizedCallback(stt_data,True)
-                            continue
-                        logger.debug( f"seg_to_voice {no} vosk accept {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                            logger.debug( f"seg_to_voice {no} reject vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                            print( f"[seg_to_voice] {no} reject vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                        else:
+                            Accept = True
+                            logger.debug( f"seg_to_voice {no} accept vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
+                            print( f"[seg_to_voice] {no} accept vosk {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
 
-                    if SttData.Segment == stt_data.typ:
-                        stt_data.typ = SttData.Voice
-                    elif SttData.PreSegment == stt_data.typ:
-                        stt_data.typ = SttData.PreVoice
-                    self._PrioritizedCallback(stt_data,False)
+                    if Accept is not None and Accept:
+                        if SttData.Segment == stt_data.typ:
+                            stt_data.typ = SttData.Voice
+                        elif SttData.PreSegment == stt_data.typ:
+                            stt_data.typ = SttData.PreVoice
+                        self._PrioritizedCallback(stt_data,False)
+                    else:
+                        self._PrioritizedCallback(stt_data,True)
 
                 elif SttData.Term==stt_data.typ:
                     self._PrioritizedCallback(stt_data,False)

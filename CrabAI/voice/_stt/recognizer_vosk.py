@@ -2,6 +2,7 @@ import sys
 import os
 from pathlib import Path
 import re
+import json
 import logging
 
 try:
@@ -61,3 +62,68 @@ def get_vosk_spk_model(m:Model=None):
     if p is not None:
         return SpkModel( p )
     return None
+
+katakana_basic = [
+    # 基本のカタカナ50音
+    "ア", "イ", "ウ", "エ", "オ",
+    "カ", "キ", "ク", "ケ", "コ",
+    "サ", "シ", "ス", "セ", "ソ",
+    "タ", "チ", "ツ", "テ", "ト",
+    "ナ", "ニ", "ヌ", "ネ", "ノ",
+    "ハ", "ヒ", "フ", "ヘ", "ホ",
+    "マ", "ミ", "ム", "メ", "モ",
+    "ヤ", "ユ", "ヨ",
+    "ラ", "リ", "ル", "レ", "ロ",
+    "ワ", "ヲ", "ン",
+    # 濁音
+    "ガ", "ギ", "グ", "ゲ", "ゴ",
+    "ザ", "ジ", "ズ", "ゼ", "ゾ",
+    "ダ", "ヂ", "ヅ", "デ", "ド",
+    "バ", "ビ", "ブ", "ベ", "ボ",
+    # 半濁音
+    "パ", "ピ", "プ", "ペ", "ポ",
+]
+
+def is_all_katakana(char):
+    """文字がカタカナかどうかを判定する"""
+    return ord(char) in range(0x30A1, 0x30FC + 1)
+
+def is_small_katakana(char):
+    return char in "ァィゥェォッャュョヮヵヶ・ー"
+
+def is_katakana(char):
+    return not is_small_katakana(char) and is_all_katakana(char)
+
+def get_katakana_grammar():
+    mdl:Model = get_vosk_model()
+    model_path=mdl.get_model_by_name('vosk-model-small-ja-0.22')
+    words_path=os.path.join(model_path, 'graph','words.txt' )
+    word_set = set()
+    for cc in katakana_basic:
+        word_set.add(cc)
+    with open(words_path,'r') as stream:
+        while True:
+            line = stream.readline()
+            if line == '':
+                break
+            word = line.split()[0]
+            # 先頭がカタカナ以外なら無視
+            if not is_katakana(word[0]):
+                continue
+            katakana_len = 0
+            for cc in word:
+                if not is_all_katakana(cc):
+                    # カタカナ以外の文字があれば無視
+                    katakana_len = 0
+                    break
+                else:
+                    if not is_small_katakana(cc):
+                        katakana_len += 1
+            if 0<katakana_len and katakana_len<3:
+                word_set.add(word)
+    for cc in 'ンゾヂヅヌ':
+        if cc in word_set:
+            word_set.remove(cc)
+    word_list = sorted(word_set)
+    grammers=json.dumps(word_list,ensure_ascii=False)
+    return grammers

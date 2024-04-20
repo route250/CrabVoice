@@ -10,7 +10,7 @@ import librosa
 #import scipy
 from .stt_data import SttData
 from .ring_buffer import RingBuffer
-from .hists import Hists
+from .hists import AudioFeatureBuffer
 from .vad_counter import VadTbl
 from .low_pos import LowPos
 from ..voice_utils import voice_per_audio_rate
@@ -47,7 +47,7 @@ class AudioToSegmentWebrtcVAD:
         self.num_samples = 0
         #
         self.seg_buffer:RingBuffer = RingBuffer( self.sample_rate * 30, dtype=np.float32 )
-        self.hists:Hists = Hists( self.seg_buffer.capacity )
+        self.hists:AudioFeatureBuffer = AudioFeatureBuffer( self.seg_buffer.capacity )
         # webrtc-vad
         self.vad_mode = 2
         self.vad = webrtcvad.Vad(self.vad_mode) # 0:甘い 0:厳しい
