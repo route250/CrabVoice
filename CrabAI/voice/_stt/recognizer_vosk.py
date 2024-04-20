@@ -101,7 +101,7 @@ def get_katakana_grammar():
     word_set = set()
     for cc in katakana_basic:
         word_set.add(cc)
-    with open(words_path,'r') as stream:
+    with open(words_path,'r',encoding='utf-8') as stream:
         while True:
             line = stream.readline()
             if line == '':
@@ -119,7 +119,7 @@ def get_katakana_grammar():
                 else:
                     if not is_small_katakana(cc):
                         katakana_len += 1
-            if 0<katakana_len and katakana_len<3:
+            if 0<katakana_len and katakana_len<2:
                 word_set.add(word)
     for cc in 'ンゾヂヅヌ':
         if cc in word_set:
