@@ -11,7 +11,7 @@ try:
 except:
     pass
 
-logger = logging.getLogger('voice')
+logger = logging.getLogger(__name__)
 
 def get_vosk_model( lang:str='ja' ) ->Model:
     # search and load model

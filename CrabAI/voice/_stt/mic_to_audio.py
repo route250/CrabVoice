@@ -9,7 +9,7 @@ import numpy as np
 import librosa
 import sounddevice as sd
 
-logger = getLogger('mic_to_audio')
+logger = getLogger(__name__)
 
 class Mic:
     def __init__(self,samplerate, device, dtype ):

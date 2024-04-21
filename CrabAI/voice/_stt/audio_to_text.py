@@ -18,7 +18,7 @@ from .mic_to_audio import mic_to_audio
 from .audio_to_voice import AudioToVoice
 from .recognizer_google import RecognizerGoogle
 
-logger = getLogger("AudioToText")
+logger = getLogger(__name__)
 
 class AudioToText:
 
@@ -89,9 +89,11 @@ class AudioToText:
                 pass #google
 
             if filename is not None:
+                logger.info(f"load file {filename}")
                 self.w2a:wave_to_audio = wave_to_audio( sample_rate=16000, callback=self.audio_to_voice.audio_callback )
                 self.w2a.load(filename)
             elif mic is not None:
+                logger.info(f"load mic {mic}")
                 self.m2a = mic_to_audio( sample_rate=16000, callback=self.audio_to_voice.audio_callback )
                 self.m2a.load(mic=mic)
         except:

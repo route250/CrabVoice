@@ -9,7 +9,7 @@ from openai import OpenAI
 from httpx import Timeout,TimeoutException,HTTPError
 
 import logging
-logger = logging.getLogger('voice')
+logger = logging.getLogger('ClabAI.voice')
 
 # sys.path.append('/home/maeda/LLM')
 sys.path.append(os.getcwd())
@@ -205,14 +205,17 @@ response_fmt = [
 
 def main():
     from datetime import datetime
-    setup_openai_api()
+
+    root_logger = logging.getLogger()
+    voice_logger = logging.getLogger('CrabAI.voice')
+    voice_logger.setLevel(logging.DEBUG)
 
     # 現在の日時を取得し、ファイル名に適した形式にフォーマット
     current_time = datetime.now().strftime('%Y%m%d_%H%M%S')
     log_filename = os.path.join( 'logs',f'test_voice_{current_time}.log')
     os.makedirs( 'logs', exist_ok=True )
 
-    logger.setLevel(logging.DEBUG)  # ロガーのログレベルを設定
+    root_logger.setLevel(logging.INFO)  # ロガーのログレベルを設定
 
     # ファイル出力用のハンドラを作成
     file_handler = logging.FileHandler(log_filename)
@@ -223,14 +226,16 @@ def main():
     console_handler.setLevel(logging.INFO)  # コンソールにはINFO以上のログを出力
 
     # ログメッセージのフォーマットを設定
-    formatter1 = logging.Formatter('%(asctime)s %(name)s %(levelname)s %(message)s')
+    formatter1 = logging.Formatter('%(asctime)s %(module)s %(levelname)s %(message)s')
     file_handler.setFormatter(formatter1)
     formatter2 = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
     console_handler.setFormatter(formatter2)
 
     # ハンドラをロガーに追加
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+
+    setup_openai_api()
 
     openai_llm_model='gpt-3.5-turbo'
     speech:VoiceTalkEngine = VoiceTalkEngine() # speaker=2000gtts

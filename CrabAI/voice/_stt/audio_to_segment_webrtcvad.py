@@ -15,7 +15,7 @@ from .vad_counter import VadTbl
 from .low_pos import LowPos
 from ..voice_utils import voice_per_audio_rate
 
-logger = getLogger('audio_to_segment')
+logger = getLogger(__name__)
 
 def rms_energy( audio, sr=16000 ):
     e = librosa.feature.rms( y=audio, hop_length=len(audio))[0][0]

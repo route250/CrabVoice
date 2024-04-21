@@ -7,7 +7,7 @@ from speech_recognition.audio import AudioData
 #from .VoskUtil import sound_float_to_int16, NetworkError
 
 import logging
-logger = logging.getLogger('voice')
+logger = logging.getLogger(__name__)
 
 def to_int( value, default ):
     return int(value) if isinstance(value,(int,float)) else int(default)

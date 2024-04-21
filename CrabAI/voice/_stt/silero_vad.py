@@ -7,16 +7,17 @@ try:
 except:
     pass
 
-logger = getLogger("SileroVAD")
+logger = getLogger(__name__)
 
 def init_jit_model(model_path: str, device:str='cpu'):
     try:
+        logger.info(f"load {model_path}")
         torch.set_grad_enabled(False)
         model = torch.jit.load(model_path, map_location=torch.device(device))
         model.eval()
         return model
     except:
-        logger.exception("")
+        logger.exception(f"failled to load {model_path}")
         return None
 
 class SileroVAD:

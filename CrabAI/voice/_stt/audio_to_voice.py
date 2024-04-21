@@ -1,5 +1,5 @@
 from logging import getLogger
-logger = getLogger("AudioToVoide")
+logger = getLogger(__name__)
 
 import sys,os,datetime
 from threading import Thread, Condition
@@ -42,9 +42,10 @@ class AudioToVoice:
         self._var3:float = 0.45
         self.audio_to_segment:AudioToSegment = AudioToSegment( callback=self._fn_callback )
         self.vosk_gr: list[KaldiRecognizer] = [None] * len(self._thread)
-        self.vosk2: list[KaldiRecognizer] = [None] * len(self._thread)
+        self.vosk_recog: list[KaldiRecognizer] = [None] * len(self._thread)
         self.vosk_model: vosk.Model = None
         self.vosk_spk: vosk.SpkModel = None
+        self.vosk_grammar:str = None
         self.vosk_max_len:int = int(self.sample_rate*1.7)
         # 
         self.input_count:int = 0
@@ -104,26 +105,31 @@ class AudioToVoice:
 
     def load(self):
         self.audio_to_segment.load()
-        if self.num_threads>0 and self.vosk_gr[0] is None:
+        if self.num_threads>0:
             if self.vosk_model is None:
                 logger.info( f"load vosk lang model" )
                 self.vosk_model = recognizer_vosk.get_vosk_model(lang="ja")
-            # if self.vosk_spk is None:
-            #     self.vosk_spk = recognizer_vosk.get_vosk_spk_model(self.vosk_model)
-            katakana_grammer:str = recognizer_vosk.get_katakana_grammar()
+            if self.vosk_spk is None:
+                logger.info( f"load vosk spk model" )
+                self.vosk_spk = recognizer_vosk.get_vosk_spk_model(self.vosk_model)
+            if self.vosk_grammar is None:
+                logger.info( f"load vosk grammar" )
+                self.vosk_grammar:str = recognizer_vosk.get_katakana_grammar()
             for i in range(len(self.vosk_gr)):
-                logger.info( f"load vosk model {i}" )
-                if katakana_grammer is not None:
-                    vosk: KaldiRecognizer = KaldiRecognizer(self.vosk_model, int(self.sample_rate), katakana_grammer )
-                    # if self.vosk_spk is not None:
-                    #     vosk.SetSpkModel( self.vosk_spk )
-                    self.vosk_gr[i] = vosk
-                else:
-                    self.vosk_gr[i] = None
-                vosk: KaldiRecognizer = KaldiRecognizer(self.vosk_model, int(self.sample_rate) )
-                # if self.vosk_spk is not None:
-                #     vosk.SetSpkModel( self.vosk_spk )
-                self.vosk2[i] = vosk
+                if self.vosk_recog[i] is None:
+                    if self.vosk_grammar is not None:
+                        logger.info( f"create grammar model {i}" )
+                        vosk: KaldiRecognizer = KaldiRecognizer(self.vosk_model, int(self.sample_rate), self.vosk_grammar )
+                        if self.vosk_spk is not None:
+                            vosk.SetSpkModel( self.vosk_spk )
+                        self.vosk_gr[i] = vosk
+                    else:
+                        self.vosk_gr[i] = None
+                    logger.info( f"create vosk model {i}" )
+                    vosk: KaldiRecognizer = KaldiRecognizer(self.vosk_model, int(self.sample_rate) )
+                    if self.vosk_spk is not None:
+                        vosk.SetSpkModel( self.vosk_spk )
+                    self.vosk_recog[i] = vosk
 
     def start(self):
         try:
@@ -157,7 +163,7 @@ class AudioToVoice:
         try:
             logger.info(f"seg to voice {no} start")
             grammer:KaldiRecognizer = self.vosk_gr[no]
-            vosk2:KaldiRecognizer = self.vosk2[no]
+            vosk2:KaldiRecognizer = self.vosk_recog[no]
             while True:
                 try:
                     stt_data:SttData = self._queue.get( timeout=1.0 )
@@ -184,24 +190,23 @@ class AudioToVoice:
 
                         if Accept is None and grammer:
                             try:
-                                print(f"[set_to_voice] {no} #1-4-1")
-                                vosk.SetLogLevel(1)
+                                #print(f"[seg_to_voice] {no} #1-4-1")
+                                #vosk.SetLogLevel(1)
                                 # 判定する範囲
+                                vosk_sec = time.time()
                                 hist_vad:np.ndarray = stt_data['vad']
                                 fz:int = stt_length // len(hist_vad)
                                 center:int = hist_vad.argmax() * fz
                                 ast = max( 0, center - int(self.vosk_max_len*0.6) )
                                 aed = min( len(stt_audio), ast + self.vosk_max_len*2 )
-                                vosk_sec = time.time()
-                                audio_i16:np.ndarray = stt_audio[ast:aed] * 32767.0
+                                audio_i16:np.ndarray = stt_audio * 32767.0
                                 audio_bytes:bytes = audio_i16.astype( np.int16 ).tobytes()
-                                print(f"[set_to_voice] {no} #1-4-2")
+                                #print(f"[set_to_voice] {no} #1-4-2")
                                 grammer.AcceptWaveform( audio_bytes )
-                                print(f"[set_to_voice] {no} #1-4-3")
                                 vosk_res = json.loads( grammer.FinalResult())
                                 grammer.Reset()
                                 vosk_sec = time.time() - vosk_sec
-                                txt = vosk_res.get('text')
+                                txt = vosk_res.get('text','')
                                 if txt in ignore_list:
                                     logger.debug( f"seg_to_voice {no} reject grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
                                     print( f"[seg_to_voice] {no} reject grammer {vosk_sec:.4f}(sec)/{audo_sec:.4f} {vosk_res}")
@@ -213,7 +218,7 @@ class AudioToVoice:
                                 logger.exception(f"#4 {str(err)}")
                             finally:
                                 vosk.SetLogLevel(-1)
-                                print(f"[set_to_voice] {no} #1-4-99")
+                                #print(f"[set_to_voice] {no} #1-4-99")
                         if Accept is None:
                             # 判定する範囲
                             hist_vad:np.ndarray = stt_data['vad']

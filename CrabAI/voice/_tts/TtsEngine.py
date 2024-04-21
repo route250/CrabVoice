@@ -23,7 +23,7 @@ from ..voice_utils import mml_to_audio, audio_to_wave_bytes, create_tone
 from ..translate import convert_to_katakana
 
 from logging import getLogger
-logger = getLogger('voice')
+logger = getLogger(__name__)
 
 class TtsEngine:
     EOT:str = "<|EOT|>"

@@ -7,7 +7,7 @@ from .stt import AudioToText, SttData
 from .tts import TtsEngine
 
 import logging
-logger = logging.getLogger('voice')
+logger = logging.getLogger(__name__)
 
 class VoiceTalkEngine:
     EOT:str = TtsEngine.EOT

@@ -9,7 +9,7 @@ import librosa
 
 from .stt_data import SttData
 
-logger = logging.getLogger('wave_to_audio')
+logger = logging.getLogger(__name__)
 
 class wave_to_audio:
 

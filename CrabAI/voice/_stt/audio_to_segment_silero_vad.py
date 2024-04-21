@@ -15,7 +15,7 @@ from .low_pos import LowPos
 from ..voice_utils import voice_per_audio_rate
 from .silero_vad import SileroVAD
 
-logger = getLogger('audio_to_segment')
+logger = getLogger(__name__)
 
 def rms_energy( audio, sr=16000 ):
     e = librosa.feature.rms( y=audio, hop_length=len(audio))[0][0]
@@ -181,6 +181,7 @@ class AudioToSegmentSileroVAD:
 
     def load(self):
         try:
+            logger.info("load start")
             self.silerovad.load()
         except:
             logger.exception("")
@@ -197,7 +198,7 @@ class AudioToSegmentSileroVAD:
         if self.rec>=PRE_VOICE:
             st_pos = self.pos[VOICE]
             end_pos = self.seg_buffer.get_pos()
-            print(f"[REC] stop {st_pos} {end_pos}")
+            logger.info(f"[REC] stop {st_pos} {end_pos}")
             stt_data = SttData( SttData.Segment, utc, st_pos,end_pos, self.sample_rate )
             self._flush( stt_data )
         self.rec = NON_VOICE

@@ -3,7 +3,7 @@ from zipfile import BadZipFile
 import numpy as np
 import pandas as pd
 
-logger = getLogger('SttData')
+logger = getLogger(__name__)
    
 def _to_npy_str(value) -> np.ndarray:
     if value is None:
