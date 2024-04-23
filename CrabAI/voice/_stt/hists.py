@@ -77,15 +77,31 @@ class AudioFeatureBuffer:
             rb_frame = self.hist_vad_ave.to_numpy(-window)
             rb_ma = rb_frame.mean()
             self.hist_vad_ave.set(len(self.hist_vad_ave)+offset, rb_ma)
+        return self.hist_hi.length
 
-    def replace_color( self, color ):
-        self.hist_color.set(-1,color)
+    def get_color( self, idx ):
+        self.hist_color.get( idx )
 
-    def replace_var( self, var ):
-        self.hist_var.set(-1,var)
+    def set_color( self, idx, color ):
+        self.hist_color.set( idx, color )
+
+    def set_var( self, idx, var ):
+        self.hist_var.set( idx, var )
 
     def get_vad_count(self,idx):
         return self.hist_vad.get(idx)
+
+    def get_vad(self,idx):
+        try:
+            return self.hist_vad.get(idx)
+        except:
+            return 0.0
+
+    def get_vad_ave(self,idx):
+        try:
+            return self.hist_vad_ave.get(idx)
+        except:
+            return 0.0
 
     def get_vad_slope(self,idx):
         try:
@@ -99,16 +115,16 @@ class AudioFeatureBuffer:
         except:
             return 0.0
 
-    def keep(self,sz):
-        rm = self.hist_hi.capacity - sz
-        self.remove(rm)
+    # def keep(self,sz):
+    #     rm = self.hist_hi.capacity - sz
+    #     self.remove(rm)
 
-    def remove(self, rm ):
-        self.hist_hi.remove( rm )
-        self.hist_lo.remove( rm )
-        self.hist_color.remove( rm )
-        self.hist_vad.remove( rm )
-        self.hist_vad_ave.remove( rm )
-        self.hist_energy.remove( rm )
-        self.hist_zc.remove( rm )
-        self.hist_var.remove( rm )
+    # def remove(self, rm ):
+    #     self.hist_hi.remove( rm )
+    #     self.hist_lo.remove( rm )
+    #     self.hist_color.remove( rm )
+    #     self.hist_vad.remove( rm )
+    #     self.hist_vad_ave.remove( rm )
+    #     self.hist_energy.remove( rm )
+    #     self.hist_zc.remove( rm )
+    #     self.hist_var.remove( rm )

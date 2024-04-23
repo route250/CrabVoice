@@ -21,7 +21,6 @@ def rms_energy( audio, sr=16000 ):
     e = librosa.feature.rms( y=audio, hop_length=len(audio))[0][0]
     return e
 
-
 def find_lowest_vad_at_slope_increase( data:np.ndarray, window_size):
     if not isinstance(data,np.ndarray):
         raise Exception("not np.ndarray")
@@ -264,7 +263,8 @@ class AudioToSegmentSileroVAD:
             #
             self.seg_buffer.append(frame)
             self.raw_buffer.append(frame_raw)
-            self.hists.add( frame.max(), frame.min(), self.rec, is_speech, energy, zc, 0.0 )
+            hists_len:int = self.hists.add( frame.max(), frame.min(), self.rec, is_speech, energy, zc, 0.0 )
+            hists_idx:int = hists_len - 1
 
             if self._mute:
                 self.rec=NON_VOICE
@@ -284,7 +284,7 @@ class AudioToSegmentSileroVAD:
                     seg_len = end_pos - self.pos[POST_VOICE]
                     if seg_len>=self.post_speech_length:
                         # 音声終了処理
-                        print(f"[REC] PostVoice->Term {end_pos} {is_speech}")
+                        logger.debug(f"[REC] PostVoice->Term {end_pos} {is_speech}")
                         stt_data = SttData( SttData.Segment, utc, self.pos[VPULSE],end_pos, self.sample_rate )
                         self._flush( stt_data )
                         self.rec = TERM
@@ -292,7 +292,7 @@ class AudioToSegmentSileroVAD:
 
             elif self.rec==VOICE:
                 if is_speech<self.dn_trig:
-                    print(f"[REC] Voice->PostVoice {end_pos} {is_speech}")
+                    logger.debug(f"[REC] Voice->PostVoice {end_pos} {is_speech}")
                     self.rec=POST_VOICE
                     self.pos[POST_VOICE] = end_pos
                 else:
@@ -310,13 +310,13 @@ class AudioToSegmentSileroVAD:
                                 st_sec = self.pos[VOICE]/self.sample_rate
                                 ed_sec = end_pos/self.sample_rate
                                 split_sec = split_pos/self.sample_rate
-                                print(f"[REC] split {is_speech} {st_sec}-{ed_sec} {split_sec} {seg_len/self.sample_rate}(sec)")
+                                logger.debug(f"[REC] split {is_speech} {st_sec}-{ed_sec} {split_sec} {seg_len/self.sample_rate}(sec)")
                                 stt_data = SttData( SttData.Segment, utc, self.pos[VPULSE],split_pos, self.sample_rate )
                                 self._flush( stt_data )
                                 self.pos[VPULSE] = split_pos
                                 self.pos[VOICE] = split_pos
                             else:
-                                print(f"[REC] failled to split ")
+                                logger.debug(f"[REC] failled to split ")
                         else:
                             logger.error(f"[REC] failled to split self.pos[VOICE]:{self.pos[VOICE]} end_pos:{end_pos} seg_len:{seg_len} ignore:{ignore} [{st}:{ed}]" )
                     else:
@@ -335,41 +335,39 @@ class AudioToSegmentSileroVAD:
                     # 音声開始処理をするとこ
                     tmpbuf = self.seg_buffer.to_numpy( -seg_len )
                     var = voice_per_audio_rate(tmpbuf, sampling_rate=self.sample_rate)
-                    self.hists.replace_var( var )
+                    self.hists.set_var( hists_idx, var )
                     if var>self.var1:
                         # FFTでも人の声っぽいのでセグメントとして認定
-                        print( f"[REC] segment start voice/audio {var}" )
+                        logger.debug( f"[REC] segment start voice/audio {var}" )
                         self.rec = PRE_VOICE
-                        self.pos[PRE_VOICE] = self.pos[VPULSE]
+                        seg_start = self.pos[VPULSE]
+                        self.pos[PRE_VOICE] = seg_start
                         # 直全のパルスをマージする
-                        xstart = base = self.pos[VPULSE]
-                        merge_length = int(self.sample_rate*0.2)
-                        max_merge_length = int(self.sample_rate*0.6)
+                        merge_length = int(self.sample_rate*0.4)
+                        max_merge_length = int(self.sample_rate*1.2)
+                        limit = seg_start - max_merge_length
                         i=len(self.ignore_list)-1
-                        while i>=0:
-                            if base-self.ignore_list[i]>max_merge_length:
-                                break
-                            if xstart-self.ignore_list[i]<=merge_length:
-                                xstart = int(self.ignore_list[i])
+                        while i>=0 and limit<=self.ignore_list[i]:
+                            if seg_start-self.ignore_list[i]<=merge_length:
+                                seg_start = int(self.ignore_list[i])
                             i-=1
                         self.ignore_list.clear()
                         # 上り勾配をマージする
-                        hists_idx0 = -1*len(self.hists)
                         while True:
-                            hists_idx = (xstart-end_pos)//self.frame_size-1
-                            hco = self.hists.hist_color[hists_idx]
+                            idx = self.hists.to_index( seg_start//self.frame_size -1 )
+                            if idx<0 or self.hists.get_vad_slope( idx )<0.01:
+                                break
+                            seg_start -= self.frame_size
+                        idx = max(0, self.hists.to_index( seg_start//self.frame_size -1 ) )
+                        for idx in range( idx, hists_len):
+                            hco = self.hists.hist_color[idx]
                             if hco == NON_VOICE or hco == TERM:
-                                self.hists.hist_color.set(hists_idx, PREFIX)
-                            if hists_idx<=hists_idx0:
-                                break
-                            if self.hists.get_vad_slope( hists_idx )<0.01:
-                                break
-                            xstart -= self.frame_size
+                                self.hists.hist_color.set(idx, PREFIX)
                         self.last_down.clear()
                         self.prefed = False
-                        self.pos[VPULSE] = xstart
+                        self.pos[VPULSE] = seg_start
                     # else:
-                    #     print( f"[REC] ignore pulse voice/audio {var}" )
+                    #     logger.debug( f"[REC] ignore pulse voice/audio {var}" )
                 elif is_speech<self.pick_trig:
                     self.rec = POST_VPULSE if self.rec==VPULSE else POST_TPULSE
                     self.pos[POST_VPULSE] = end_pos
@@ -382,7 +380,7 @@ class AudioToSegmentSileroVAD:
                 else:
                     seg_len = end_pos - self.pos[POST_VPULSE]
                     if seg_len>=self.ignore_length:
-                        #print(f"[REC] pulse->none {end_pos}")
+                        #logger.debug(f"[REC] pulse->none {end_pos}")
                         self.rec = NON_VOICE if self.rec==POST_VPULSE else TERM
 
             elif self.rec==TERM:
@@ -394,32 +392,29 @@ class AudioToSegmentSileroVAD:
                         self.callback(stt_data)
                     self.rec=NON_VOICE
                 elif is_speech>=self.pick_trig:
-                    # print(f"[REC] Term->T_Pulse {end_pos} {is_speech}")
+                    # logger.debug(f"[REC] Term->T_Pulse {end_pos} {is_speech}")
                     self.rec=TPULSE
                     self.ignore_list.add(end_pos)
                     self.pos[VPULSE] = end_pos
             else:
                 #NON_VOICE
+                # 最後のindex
+                last_idx = hists_idx - (self.hists.window//2)
+                if last_idx>self.hists.window:
+                    slope0 = self.hists.get_vad_slope(last_idx-1)
+                    slope1 = self.hists.get_vad_slope(last_idx)
+                    vx = 0.05
+                    if vx>slope0 and vx<=slope1:
+                        xx_pos = end_pos - (self.frame_size*(1+self.hists.window//2))
+                        self.ignore_list.add( xx_pos )
+                        logger.debug(f"[REC] pulse {xx_pos} slope:{slope0:.3f} {slope1:.3f}")
                 if is_speech>=self.pick_trig:
-                    # print(f"[REC] NoVice->V_Pulse {end_pos} {is_speech}")
+                    # logger.debug(f"[REC] NoVice->V_Pulse {end_pos} {is_speech}")
                     self.rec=VPULSE
                     self.ignore_list.add(end_pos)
                     self.pos[VPULSE] = end_pos
-                else:
-                    # 最後のindex
-                    last_pos = end_pos - self.frame_size*(self.hists.window+1)//2
-                    if last_pos>1:
-                        hlen = self.hists.to_index( last_pos//self.frame_size )
-                        x1 = self.hists.get_vad_slope(hlen-3)
-                        x2 = self.hists.get_vad_slope(hlen-2)
-                        x3 = self.hists.get_vad_slope(hlen-1)
-                        vx=0.01
-                        if x1<vx and vx<=x2 and vx<=x3:
-                            for ih in range(hlen-3,self.hists.to_index( end_pos//self.frame_size) ):
-                                self.hists.hist_color.set(ih,VPULSE)
-                            self.ignore_list.add(last_pos)
 
-            self.hists.replace_color( self.rec )
+            self.hists.set_color( hists_idx, self.rec )
             if (num_samples-self.last_dump)>=self.seg_buffer.capacity:
                 self.last_dump = num_samples
                 ed = self.seg_buffer.get_pos()

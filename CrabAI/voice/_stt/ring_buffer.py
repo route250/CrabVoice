@@ -13,7 +13,7 @@ class RingBuffer:
         self.dtype=dtype
         self.capacity:int = int(capacity)
         self.buffer:np.ndarray = np.zeros( self.capacity, dtype=dtype )
-        #
+        self.shape = self.buffer.shape
         self.offset:int = 0
         self.pos:int = 0
         self.length:int = 0
@@ -146,4 +146,3 @@ class RingBuffer:
             return self.get(key)
         else:
             raise TypeError("Invalid argument type.")
-                

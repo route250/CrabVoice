@@ -176,7 +176,8 @@ class AudioToSegmentWebrtcVAD:
             energy = rms_energy(frame, sr=self.sample_rate )
             #
             self.seg_buffer.append(frame)
-            self.hists.add( frame.max(), frame.min(), self.rec, self.count1.sum, energy, zc, 0.0 )
+            hists_len:int = self.hists.add( frame.max(), frame.min(), self.rec, self.count1.sum, energy, zc, 0.0 )
+            hists_idx:int = hists_len - 1
 
             if self._mute:
                 self.rec=0
@@ -232,7 +233,7 @@ class AudioToSegmentWebrtcVAD:
                     if seg_len>self.ignore_length:
                         tmpbuf = self.seg_buffer.to_numpy( -seg_len )
                         var = voice_per_audio_rate(tmpbuf, sampling_rate=self.sample_rate)
-                        self.hists.replace_var(var)
+                        self.hists.set_var( hists_idx, var)
                         if var>self.var1:
                             print( f"segment start voice/audio {var}" )
                             self.rec = 2
@@ -285,7 +286,7 @@ class AudioToSegmentWebrtcVAD:
                             self.dict_list.append( stt_data )
                         else:
                             self.callback(stt_data)
-            self.hists.replace_color( self.rec )
+            self.hists.set_color( hists_idx, self.rec )
             if (num_samples-self.last_dump)+len(frame)*2>self.seg_buffer.capacity:
                 self.last_dump = num_samples+len(frame)
                 ed = self.seg_buffer.get_pos()
