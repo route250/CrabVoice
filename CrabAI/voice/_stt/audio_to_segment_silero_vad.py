@@ -302,7 +302,7 @@ class AudioToSegmentSileroVAD:
                         ignore = int( self.sample_rate * 0.2 )
                         st = ( self.pos[VOICE] + ignore ) // self.frame_size
                         ed = ( end_pos - ignore ) // self.frame_size
-                        hist_vad = self.hists.hist_vas.to_numpy( st, ed )
+                        hist_vad = self.hists.hist_vad.to_numpy( st, ed )
                         if len(hist_vad)>0:
                             split_pos = find_lowest_vad_at_slope_increase( hist_vad, 5 )
                             if split_pos>0:

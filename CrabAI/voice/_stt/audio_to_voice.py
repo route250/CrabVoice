@@ -9,6 +9,7 @@ import json
 from heapq import heapify, heappop, heappush
 
 import numpy as np
+from scipy import signal
 _X_VOSK_:bool=False
 try:
     import vosk
@@ -29,6 +30,7 @@ from .audio_to_segment_silero_vad import AudioToSegmentSileroVAD as AudioToSegme
 from ..voice_utils import voice_per_audio_rate
 
 class AudioToVoice:
+    DEFAULT_BUTTER = [ 100, 10, 10, 90 ] # fpass, fstop, gpass, gstop
     def __init__(self, *, callback, sample_rate:int=16000, save_path=None):
         self.sample_rate = sample_rate if isinstance(sample_rate,int) else 16000
         self._state:int = 0
@@ -58,8 +60,28 @@ class AudioToVoice:
         # high = 1000 /fs_nyq
         # self.pass_ba = scipy.signal.butter( 2, [low, high], 'bandpass', output='ba')
         # self.cut_ba = scipy.signal.butter( 2, [low, high], 'bandstop', output='ba')
+        self._butter = AudioToVoice.DEFAULT_BUTTER
+        self._update_butter()
         # データ保存用
         self.save_path:str = save_path
+
+    def _update_butter(self):
+        fpass, fstop, gpass, gstop = self._butter
+        fpass2 = np.array([fpass,7000])
+        fstop2 = np.array([fstop,8000])
+        fn = self.sample_rate // 2   #ナイキスト周波数
+        wp = fpass2 / fn  #ナイキスト周波数で通過域端周波数を正規化
+        ws = fstop2 / fn  #ナイキスト周波数で阻止域端周波数を正規化
+        N, Wn = signal.buttord(wp, ws, gpass, gstop)  #オーダーとバターワースの正規化周波数を計算
+        # self.b, self.a = signal.butter(N, Wn, "high")   #フィルタ伝達関数の分子と分母を計算
+        self.sos = signal.butter(N, Wn, "band", output='sos')   #フィルタ伝達関数の分子と分母を計算
+
+    def audio_filter(self,x):
+        if not isinstance(x,np.ndarray) or len(x)==0:
+            return x
+        #y = signal.filtfilt(self.b, self.a, x) #信号に対してフィルタをかける
+        y:np.ndarray = signal.sosfiltfilt( self.sos, x ) #信号に対してフィルタをかける
+        return y.astype(np.float32)
 
     def __getitem__(self,key):
         if 'mute'==key:
@@ -174,7 +196,7 @@ class AudioToVoice:
                     if SttData.Segment==stt_data.typ or SttData.PreSegment == stt_data.typ:
                         Accept:bool = None
                         stt_length = stt_data.end - stt_data.start
-                        stt_audio = stt_data.audio
+                        stt_audio = self.audio_filter(stt_data.raw)
                         audo_sec = stt_length/stt_data.sample_rate
 
                         if stt_length<1 or stt_audio is None:
