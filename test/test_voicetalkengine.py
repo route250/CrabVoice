@@ -203,6 +203,10 @@ response_fmt = [
     }, },
 ]
 
+class TalkException(Exception):
+    def __init__(self,*args):
+        super().__init__(*args)
+
 def main():
     from datetime import datetime
 
@@ -257,7 +261,7 @@ def main():
 
     messages = []
     last_talk_seg = 0
-    last_talk_len = 0
+    last_talk:str = ""
     while True:
         if input_mode:
             text, confs = speech.get_recognized_text()
@@ -265,7 +269,7 @@ def main():
             confs=1.0
             text = input("何か入力してください（Ctrl+DまたはCtrl+Zで終了）: ")
         if text:
-            if last_talk_len>100 or last_talk_seg>=3:
+            if len(last_talk)>100 or last_talk_seg>=3:
                 messages.append( {'role':'system','content':'AIはもっと短い言葉で話して下さい'})
             last_talk_seg = 0
             request_messages = []
@@ -283,7 +287,7 @@ def main():
             request_messages.append( {'role':'user','content':text})
             messages.append( {'role':'user','content':text})
 
-            openai_timeout:Timeout = Timeout(15, connect=4, write=10, read=15.0)
+            openai_timeout:Timeout = Timeout(15.0, connect=10.0, write=10.0, read=20.0)
             openai_max_retries=3
             completions_cnt=3
             net_count=openai_max_retries
@@ -334,6 +338,8 @@ def main():
                                 last_talk_seg+=1
                             if seg in talk2_split:
                                 # logger.info( f"{seg} : {talk_buffer}")
+                                if last_talk.startswith(assistant_content):
+                                    raise TalkException()
                                 speech.add_talk(talk_buffer)
                                 talk_buffer = ""
                     if talk_buffer:
@@ -344,15 +350,27 @@ def main():
                         speech.tts.play_error2()
                         text = "えーっと、"
                         speech.add_talk(text)
-                        request_messages.append( {'role':'assistant','content':text})
+                        request_messages.append( {'role':'system','content':'斜め上の視点で解答してみて'})
                         completions_cnt-=1
+                except TalkException:
+                    text = "そうだね〜"
+                    speech.add_talk(text)
+                    request_messages.append( {'role':'system','content':'すこし視点を変えて解答してみよう'})
                 except (TimeoutException,openai.APITimeoutError,openai.APIConnectionError) as ex:
-                    net_count -= 1
                     logger.error(f"[OpenAI] {ex.__class__.__name__}  {ex}")
                     speech.tts.play_error2()
+                    net_count -= 1
+                    if net_count>0:
+                        text = "ちょっとまってね。"
+                        speech.add_talk(text)
+                    else:
+                        text = "接続エラー"
+                        speech.add_talk(text)
                 except openai.RateLimitError as ex:
-                    logger.error(f"[OpenAI] {ex.__class__.__name__} {ex}")
                     speech.tts.play_error2()
+                    text = "ふーむ？"
+                    speech.add_talk(text)
+                    logger.error(f"[OpenAI] {ex.__class__.__name__} {ex}")
                     time.sleep(1.0)
                 except openai.APIStatusError as ex:
                     logger.error(f"[OpenAI] {ex.__class__.__name__} {ex.status_code} {ex.message}")
@@ -377,7 +395,7 @@ def main():
             pf.update_profile( result_dict )
             time.sleep(2.0)
             messages.append( {'role':'assistant','content':assistant_content})
-            last_talk_len = len(assistant_content)
+            last_talk = assistant_content
             last_dict = result_dict
         else:
             time.sleep(0.5)

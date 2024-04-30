@@ -151,7 +151,7 @@ class TtsEngine:
 
     def _sound_init(self):
         try:
-            if self.pygame_init and (time.time()-self._last_talk)>10.0:
+            if self.pygame_init and (time.time()-self._last_talk)>100.0:
                 self.pygame_init = False
                 print(f"[PyGame]reset")
                 pygame.mixer.quit()
@@ -226,6 +226,7 @@ class TtsEngine:
     def add_talk(self, full_text:str, emotion:int = 0 ) -> None:
         talk_id:int = self._talk_id
         for text in TtsEngine.split_talk_text(full_text):
+            print(f"[TTS] put {text}")
             self.wave_queue.put( (talk_id, text, emotion ) )
         with self.lock:
             if self._running_future is None:
@@ -235,6 +236,7 @@ class TtsEngine:
         """ボイススレッド
         テキストキューからテキストを取得して音声に変換して発声キューへ送る
         """
+        print(f"[TTS] thread start")
         while True:
             talk_id:int = -1
             text:str = None
@@ -249,8 +251,10 @@ class TtsEngine:
                     text = None
                 if text is None:
                     self._running_future = None
+                    print(f"[TTS] thread end")
                     return
             try:
+                print(f"[TTS] text {text}")
                 if talk_id == self._talk_id:
                     # textから音声へ
                     audio_bytes, tts_model = self._text_to_audio( text, emotion )
