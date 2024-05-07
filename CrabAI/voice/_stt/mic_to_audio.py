@@ -1,5 +1,5 @@
 import sys
-import os
+import os,platform
 from logging import getLogger
 import time
 import traceback
@@ -153,7 +153,7 @@ class mic_to_audio:
                 audio_f32 = indata
             self.callback( self.start_utc, audio_f32 )
         except:
-            pass
+            logger.exception('callback')
 
     def _fn_finished_callback(self):
         try:
@@ -161,15 +161,39 @@ class mic_to_audio:
                 self.start_utc = time.time()
             self.callback( self.start_utc, None )
         except:
-            pass
+            logger.exception('callback')
 
     def start(self):
+        os_name = platform.system()
+        if os_name == "Darwin":
+            self.start_macos()
+        else:
+            self.start_linux()
+
+    def start_linux(self):
         try:
             segsize = int( self.mic_sampling_rate*0.1 )
             self.audioinput = sd.InputStream( samplerate=self.mic_sampling_rate, blocksize=segsize, device=self.mic_index, dtype=np.float32, callback=self._fn_callback, finished_callback=self._fn_finished_callback )
             self.audioinput.start()
         except:
-            pass
+            logger.exception('callback')
+
+    def start_macos(self):
+        try:
+            segsize = int( self.mic_sampling_rate*0.1 )
+            def micinput():
+                self.audioinput = sd.InputStream( samplerate=self.mic_sampling_rate, blocksize=segsize, device=self.mic_index, dtype=np.float32 )
+                self.audioinput.start()
+                try:
+                    while self.audioinput is not None:
+                        seg,overflow = self.audioinput.read( segsize )
+                        self._fn_callback( seg, 1, 2, 3 )
+                finally:
+                    self._fn_finished_callback()
+            tx = Thread( name='micinput', target=micinput, daemon=True )
+            tx.start()
+        except:
+            logger.exception('callback')
 
     def set_pause(self,b):
         pass
