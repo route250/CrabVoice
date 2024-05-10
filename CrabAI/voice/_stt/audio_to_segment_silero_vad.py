@@ -83,6 +83,13 @@ class AudioToSegmentSileroVAD:
         self._mute:bool = False
         self.callback = callback
         self.dict_list:list[dict] = []
+        #
+        self.filt_utc:float = 0
+        self.filt_buf:np.ndarray = np.zeros( 1, dtype=np.float32 )
+        # ウィンドウ関数の準備
+        self.fade_in_window:np.ndarray = np.zeros( 1, dtype=np.float32 )
+        self.fade_out_window:np.ndarray = np.zeros( 1, dtype=np.float32 )
+
         # 音声データを処理するフレームサイズに分割する
         self.frame_msec:int = 10  # 10ms,20ms,30ms
         self.frame_size:int = 512 # int( (self.sample_rate * self.frame_msec) / 1000 )  # 10ms,20ms,30ms
@@ -215,29 +222,63 @@ class AudioToSegmentSileroVAD:
         self.raw_buffer.clear()
         self.hists.clear()
 
-    def audio_callback(self, utc:float, raw_audio:np.ndarray, *args ) ->bool:
+    def audio_callback(self, utc:float, raw_audio2:np.ndarray, *args ) ->bool:
         """音声データをself.frame_sizeで分割して処理を呼び出す"""
         try:
-            if raw_audio is None:
+            if raw_audio2 is None:
                 # End of stream
                 self.stop( utc=utc )
                 return
+            # stereo to mono
+            raw_audio = raw_audio2[:,0]
+            # adjust buffer size
+            ll:int = len(raw_audio)
+            half:int = ll//2
+            if ll*2 != len(self.filt_buf):
+                self.filt_utc = 0
+                self.filt_buf:np.ndarray = np.zeros( ll+half*2, dtype=np.float32)
+                self.fade_in_window = signal.hann(half*2)[:half]
+                self.fade_out_window = signal.hann(half*2)[half:]
+            p_main:int = half
+            p_next:int = p_main+ll
+            p_center:int = p_next - half
+            p_end:int = p_next + half
 
+            # ウインドウ関数fade_outを適用してnext領域にコピー
+            self.filt_buf[p_next:p_end] = raw_audio[:half] * self.fade_out_window
+
+            # 低周波数カットフィルタの適用
+            if self.sos is not None:
+                segment0_filtered = self.hipass(self.filt_buf) # ローカットフィルタ
+            else:
+                segment0_filtered = self.filt_buf + 0.1 # debug用
+            # 真ん中だけ抜き出して次の処理をコール
+            # if self.filt_utc>0:
+            self._audio_split( self.filt_utc, self.filt_buf[p_main:p_next], segment0_filtered[p_main:p_next] )
+
+            # 真ん中のデータの後半にウインドウ関数fade_inを適用してbefore領域にコピー
+            self.filt_buf[0:p_main] = self.filt_buf[p_center:p_next] * self.fade_in_window
+            self.filt_buf[p_main:p_next] = raw_audio
+            self.filt_utc = utc
+        except:
+            logger.exception(f"")
+
+    def _audio_split(self, utc:float, raw_audio:np.ndarray, audio_data ) ->None:
+        """音声データをself.frame_sizeで分割して処理を呼び出す"""
+        try:
             buffer_raw:np.ndarray = self.frame_buffer_raw
             buffer_cut:np.ndarray = self.frame_buffer_cut
             buffer_len:int = self.frame_buffer_len
-            mono_f32 = raw_audio[:,0]
-            mono_cut = self.hipass(mono_f32) # ローカットフィルタ
 
-            mono_len = len(mono_f32)
-            mono_pos = 0
-            while mono_pos<mono_len:
+            audio_len = len(raw_audio)
+            pos = 0
+            while pos<audio_len:
                 # 分割
-                nn = min( mono_len-mono_pos, self.frame_size - buffer_len )
-                np.copyto( buffer_raw[buffer_len:buffer_len+nn], mono_f32[mono_pos:mono_pos+nn])
-                np.copyto( buffer_cut[buffer_len:buffer_len+nn], mono_cut[mono_pos:mono_pos+nn])
+                nn = min( audio_len-pos, self.frame_size - buffer_len )
+                np.copyto( buffer_raw[buffer_len:buffer_len+nn], raw_audio[pos:pos+nn])
+                np.copyto( buffer_cut[buffer_len:buffer_len+nn], audio_data[pos:pos+nn])
                 buffer_len += nn
-                mono_pos+=nn
+                pos+=nn
                 # framesizeになったら呼び出す
                 if buffer_len>=self.frame_size:
                     self._Process_frame( utc, buffer_raw, buffer_cut )
