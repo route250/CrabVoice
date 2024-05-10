@@ -1,4 +1,5 @@
 from logging import getLogger
+import wave
 from zipfile import BadZipFile
 import numpy as np
 import pandas as pd
@@ -167,26 +168,42 @@ class SttData:
     def load(path):
         try:
             if path is not None:
-                data = np.load(path, allow_pickle=True)
+                if path.endswith('.npz'):
+                    data = np.load(path, allow_pickle=True)
 
-                seq = _from_npy_int( data.get('seq') )
-                typ = _from_npy_int( data.get('typ'), SttData.Dump )
-                utc = _from_npy_int( data.get('utc') )
-                start = _from_npy_int( data.get('start') )
-                end = _from_npy_int( data.get('end') )
-                sample_rate = _from_npy_int( data.get('sample_rate') )
-                content = _from_npy_str( data.get('content') )
-                tag = _from_npy_str( data.get('tag') )
-                audio = data['audio'] if 'audio' in data else None
-                raw = data['raw'] if 'raw' in data else None
-                
-                hists_columns = [col for col in data.files if col not in ['seq', 'typ', 'utc', 'start', 'end', 'sample_rate', 'content', 'tag', 'audio', 'raw']]
-                hists_data = { SttData._replace_varname(col): data[col] for col in hists_columns}
-                hists = pd.DataFrame(hists_data) if len(hists_data)>0 else None
-                
-                return SttData(typ=typ, utc=utc, start=start, end=end, sample_rate=sample_rate, audio=audio, raw=raw, hists=hists, content=content, tag=tag, seq=seq, filepath=path)
-            else:
-                logger.error( f"can not load from path is None")
+                    seq = _from_npy_int( data.get('seq') )
+                    typ = _from_npy_int( data.get('typ'), SttData.Dump )
+                    utc = _from_npy_int( data.get('utc') )
+                    start = _from_npy_int( data.get('start') )
+                    end = _from_npy_int( data.get('end') )
+                    sample_rate = _from_npy_int( data.get('sample_rate') )
+                    content = _from_npy_str( data.get('content') )
+                    tag = _from_npy_str( data.get('tag') )
+                    audio = data['audio'] if 'audio' in data else None
+                    raw = data['raw'] if 'raw' in data else None
+                    
+                    hists_columns = [col for col in data.files if col not in ['seq', 'typ', 'utc', 'start', 'end', 'sample_rate', 'content', 'tag', 'audio', 'raw']]
+                    hists_data = { SttData._replace_varname(col): data[col] for col in hists_columns}
+                    hists = pd.DataFrame(hists_data) if len(hists_data)>0 else None
+                    
+                    return SttData(typ=typ, utc=utc, start=start, end=end, sample_rate=sample_rate, audio=audio, raw=raw, hists=hists, content=content, tag=tag, seq=seq, filepath=path)
+                elif path.endswith('.wav'):
+                    with wave.open( path, 'r') as stream:
+                        sample_rate = stream.getframerate()
+                        ch = stream.getnchannels()
+                        nframes = stream.getnframes()
+                        bdata = stream.readframes(nframes)
+                    i16 = np.frombuffer( bdata, dtype=np.int16).reshape(nframes,ch)
+                    f32 = i16[:,0].astype(np.float32)
+                    audio = f32/32769.0
+                    bz=512
+                    lo = np.array( [ np.min(audio[i:i+bz]) for i in range(0,len(audio),bz) ] )
+                    hi = np.array( [ np.max(audio[i:i+bz]) for i in range(0,len(audio),bz) ] )
+                    zz = np.zeros( len(lo) )
+                    hists_data = { 'lo': lo, 'hi': hi, 'color': zz, 'vad': zz, 'vad_ave': zz, 'vad_slope': zz, 'vad_accel': zz, 'var': zz }
+                    hists = pd.DataFrame(hists_data)
+                    return SttData( typ=SttData.Dump, utc=0, start=0, end=nframes, sample_rate=sample_rate, audio=audio, raw=audio, hists=hists, filepath=path)
+            logger.error( f"can not load from path {path}")
         except BadZipFile as ex:
             logger.error( f"can not load from {path}: {str(ex)}")
         except:

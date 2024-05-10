@@ -122,14 +122,35 @@ class Application(tk.Tk):
                 traceback.print_exc()
             self.after_id = self.after( 200, self._idle_loop )
 
+    def _th_load_from_directory(self, file_path:str):
+        try:
+            if not os.path.isfile(file_path):
+                print(f"ロードできません: {file_path}")
+                return
+            if file_path.endswith('.npz') or file_path.endswith('.wav'):
+                stt_data:SttData = SttData.load(file_path)
+                if stt_data is None:
+                    print(f"ロードできません: {file_path}")
+                    return
+                if stt_data.typ != SttData.Text and stt_data.typ != SttData.Dump:
+                    print(f"ロードできません: {file_path}")
+                    return
+                if self.stt is not None:
+                    self.stt.stop()
+                    self.stt = None
+                self.filename = file_path
+                filename_only = os.path.basename(self.filename)
+                self.fn_text.configure(text=filename_only)
+                self.plot(None)
+                self.table.clear()
+                self._ev_queue.put( lambda stt_data=stt_data,file_path=file_path: self.table.add(stt_data, file_path=file_path) )
+        except:
+            print(f"ロードできません: {file_path}")
+
     def load_file(self):
-        self.filename = filedialog.askopenfilename(filetypes=[("WAV files", "*.wav"),("Stt files", "*.npz")])
-        if self.filename:
-            print(f"ファイルが選択されました: {self.filename}")
-            filename_only = os.path.basename(self.filename)
-            self.fn_text.configure(text=filename_only)
-            self.plot(None)
-            self.table.clear()
+        filename = filedialog.askopenfilename(filetypes=[("Stt files","*"),("WAV files", "*.wav"),("all files", "*")])
+        if filename:
+            self._th_load_from_directory(filename)
 
     # 音声解析関数
     def analysis_audio(self):
