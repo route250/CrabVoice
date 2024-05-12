@@ -237,8 +237,8 @@ class AudioToSegmentSileroVAD:
             if ll*2 != len(self.filt_buf):
                 self.filt_utc = 0
                 self.filt_buf:np.ndarray = np.zeros( ll+half*2, dtype=np.float32)
-                self.fade_in_window = signal.hann(half*2)[:half]
-                self.fade_out_window = signal.hann(half*2)[half:]
+                self.fade_in_window = signal.windows.hann(half*2)[:half]
+                self.fade_out_window = signal.windows.hann(half*2)[half:]
             p_main:int = half
             p_next:int = p_main+ll
             p_center:int = p_next - half
