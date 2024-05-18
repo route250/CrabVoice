@@ -141,6 +141,10 @@ class VFunction:
         if isinstance(self.data_out,Queue):
             self.data_out.put(ev)
 
+    def output_ctl(self, ev:Ev):
+        if isinstance(self.ctl_out,Queue):
+            self.ctl_out.put(ev)
+
     def configure(self,key,val):
         return
 
