@@ -15,6 +15,7 @@ class AudioFeatureBuffer:
         self.hist_energy:RingBuffer = RingBuffer( self.capacity, dtype=np.float32 )
         self.hist_zc:RingBuffer = RingBuffer( self.capacity, dtype=np.float32 )
         self.hist_var:RingBuffer = RingBuffer( self.capacity, dtype=np.float32 )
+        self.hist_mute:RingBuffer = RingBuffer( self.capacity, dtype=np.float32 )
 
     def __len__(self):
         return len(self.hist_hi)
@@ -37,6 +38,7 @@ class AudioFeatureBuffer:
         self.hist_energy.clear()
         self.hist_zc.clear()
         self.hist_var.clear()
+        self.hist_mute.clear()
 
     def to_numpy(self, start:int=None, end:int=None, step:int=None ):
         hi = self.hist_hi.to_numpy(start,end,step)
@@ -47,7 +49,8 @@ class AudioFeatureBuffer:
         energy = self.hist_energy.to_numpy(start,end,step)
         zc = self.hist_zc.to_numpy(start,end,step)
         var = self.hist_var.to_numpy(start,end,step)
-        return np.vstack( (hi,lo,color,vad,vad_ave,energy,zc,var))
+        mute = self.hist_mute.to_numpy(start,end,step)
+        return np.vstack( (hi,lo,color,vad,vad_ave,energy,zc,var,mute))
 
     def to_df(self, start:int=None, end:int=None, step:int=None ):
         df = pd.DataFrame({
@@ -59,10 +62,23 @@ class AudioFeatureBuffer:
             'energy': self.hist_energy.to_numpy(start,end,step),
             'zc': self.hist_zc.to_numpy(start,end,step),
             'var': self.hist_var.to_numpy(start,end,step),
+            'mute': self.hist_mute.to_numpy(start,end,step),
         })
         return df
 
-    def add(self, hi, lo, color, vad, energy, zc, var ):
+    def put(self, hi, lo, color, vad, vad_ave, energy, zc, var, mute ):
+        self.hist_hi.add(hi)
+        self.hist_lo.add(lo)
+        self.hist_color.add(color)
+        self.hist_vad.add(vad)
+        self.hist_vad_ave.add(vad_ave)
+        self.hist_energy.add(energy)
+        self.hist_zc.add(zc)
+        self.hist_var.add(var)
+        self.hist_mute.add( mute )
+        return self.hist_hi.length
+
+    def add(self, hi, lo, color, vad, energy, zc, var, mute ):
         self.hist_hi.add(hi)
         self.hist_lo.add(lo)
         self.hist_color.add(color)
@@ -71,6 +87,7 @@ class AudioFeatureBuffer:
         self.hist_energy.add(energy)
         self.hist_zc.add(zc)
         self.hist_var.add(var)
+        self.hist_mute.add( 1.0 if mute else 0.0)
         window=self.window
         offset = window//2 - window
         if len(self.hist_vad_ave)+offset>=0:
@@ -128,3 +145,4 @@ class AudioFeatureBuffer:
     #     self.hist_energy.remove( rm )
     #     self.hist_zc.remove( rm )
     #     self.hist_var.remove( rm )
+    #     self.hist_mute.remove( rm )

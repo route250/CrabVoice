@@ -4,6 +4,8 @@ from zipfile import BadZipFile
 import numpy as np
 import pandas as pd
 
+from CrabAI.vmp import Ev
+
 logger = getLogger(__name__)
    
 def _to_npy_str(value) -> np.ndarray:
@@ -43,30 +45,30 @@ def _from_npy_float(npy:np.ndarray,default=0.0) ->float:
     except:
         return default
 
-class SttData:
+class SttData(Ev):
     """
     音声認識用の音声データ保存クラス
     """
-    Start:int = 1
-    PreSegment:int= 4
-    Segment:int = 5
-    PreVoice:int = 6
-    Voice:int = 7
-    PreText:int=8
-    Text:int=9
-    Term:int=100
+    Audio:int = 13
+    PreSegment:int= 14
+    Segment:int = 15
+    PreVoice:int = 16
+    Voice:int = 17
+    PreText:int=18
+    Text:int=19
+    Term:int=20
     Dump:int=700
     NetErr:int=900
 
-    def __init__(self, typ:int, utc:float, start:int, end:int, sample_rate:int, raw=None, audio=None, hists=None, content:str=None, tag:str=None, seq=0, filepath=None):
+    def __init__(self, typ:int, utc:float, start:int, end:int, sample_rate:int, raw=None, audio=None, hists=None, content:str=None, spk=None, tag:str=None, seq=0, filepath=None):
+        super().__init__(seq,typ)
         self.utc:float = float(utc)
-        self.seq:int = int(seq)
-        self.typ:int = int(typ)
         self.start:int = int(start)
         self.end:int = int(end)
         self.sample_rate:int = int(sample_rate)
         self.raw:np.ndarray = raw
         self.audio:np.ndarray = audio
+        self.spk:np.ndarray = spk
         self.hists:pd.DataFrame = hists
         self.content:str = content
         self.tag:str = tag
@@ -74,8 +76,8 @@ class SttData:
 
     @staticmethod
     def type_to_str(typ:int):
-        if SttData.Start==typ:
-            return "Start"
+        if SttData.Audio==typ:
+            return "Audio"
         elif SttData.PreSegment==typ:
             return "PreSegment"
         elif SttData.Segment==typ:
@@ -93,12 +95,14 @@ class SttData:
         elif SttData.Dump==typ:
             return "Dump"        
         elif SttData.NetErr==typ:
-            return "NetErr"        
+            return "NetErr"
+        return Ev.type_to_str(typ)  
 
     def __str__(self) ->str:
         st_sec = self.start/self.sample_rate
         ed_sec = self.end/self.sample_rate
-        return f"[ #{self.seq}, {SttData.type_to_str(self.typ)}, {self.start}({st_sec:.3f}), {self.end}({ed_sec:.3f}) {self.content} ]"
+        spk = 'Spk' if isinstance(self.spk,np.ndarray) else 'NoSpk'
+        return f"[ #{self.seq}, {SttData.type_to_str(self.typ)}, {self.start}({st_sec:.3f}), {self.end}({ed_sec:.3f}) {self.content} {spk}]"
 
     def __getitem__(self, key):
         if not isinstance(key, str):
@@ -107,6 +111,8 @@ class SttData:
             return self.audio.copy() if self.audio is not None else None
         if key == 'raw':
             return self.raw.copy() if self.raw is not None else None
+        if key == 'spk':
+            return self.spk.copy() if self.spk is not None else None
         if self.hists is not None:
             if key in self.hists.columns:
                 return self.hists[key].to_numpy()
@@ -130,8 +136,7 @@ class SttData:
                     accel[0] = accel[1]
                     self.hists[key] = accel
                     return accel
-
-        raise KeyError(f'Key {key} not found')
+        return super()[key]
 
     def save(self, out ):
         kwargs = {
@@ -150,6 +155,8 @@ class SttData:
             kwargs['audio'] = self.audio
         if self.raw is not None:
             kwargs['raw'] = self.raw
+        if self.spk is not None:
+            kwargs['spk'] = self.spk
         if self.hists is not None:
             for var in self.hists.columns:
                 kwargs[var] = self.hists[var].to_numpy()
@@ -181,12 +188,13 @@ class SttData:
                     tag = _from_npy_str( data.get('tag') )
                     audio = data['audio'] if 'audio' in data else None
                     raw = data['raw'] if 'raw' in data else None
+                    spk = data['spk'] if 'spk' in data else None
                     
                     hists_columns = [col for col in data.files if col not in ['seq', 'typ', 'utc', 'start', 'end', 'sample_rate', 'content', 'tag', 'audio', 'raw']]
                     hists_data = { SttData._replace_varname(col): data[col] for col in hists_columns}
                     hists = pd.DataFrame(hists_data) if len(hists_data)>0 else None
                     
-                    return SttData(typ=typ, utc=utc, start=start, end=end, sample_rate=sample_rate, audio=audio, raw=raw, hists=hists, content=content, tag=tag, seq=seq, filepath=path)
+                    return SttData(typ=typ, utc=utc, start=start, end=end, sample_rate=sample_rate, audio=audio, raw=raw, hists=hists, content=content, spk=spk, tag=tag, seq=seq, filepath=path)
                 elif path.endswith('.wav'):
                     with wave.open( path, 'r') as stream:
                         sample_rate = stream.getframerate()
