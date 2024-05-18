@@ -20,16 +20,12 @@ from .silero_vad import SileroVAD
 
 logger = getLogger(__name__)
 
-def find_lowest_vad_at_slope_increase( data:np.ndarray, window_size):
+def find_lowest_vad_at_slope_increase( data:np.ndarray, moving_averages:np.ndarray, window_size:int):
     if not isinstance(data,np.ndarray):
         raise Exception("not np.ndarray")
     if len(data.shape)!=1:
         raise Exception("not np.ndarray")
 
-    # 移動平均の計算
-    conv_kernel = np.ones(window_size) / window_size
-    moving_averages = np.convolve(data, conv_kernel, mode='valid')
-    
     # 傾きの計算
     slopes = np.diff(moving_averages)
     
@@ -192,9 +188,10 @@ class AudioToSegment(VFunction):
                         st = ( self.pos[VOICE] + ignore ) // self.frame_size
                         ed = ( end_pos - ignore ) // self.frame_size
                         hist_vad = self.hists.hist_vad.to_numpy( st, ed )
+                        hist_vad_ave = self.hists.hist_vad.to_numpy( st, ed )
                         if len(hist_vad)>0:
-                            split_pos = find_lowest_vad_at_slope_increase( hist_vad, 5 )
-                            if split_pos>0:
+                            split_pos = find_lowest_vad_at_slope_increase( hist_vad, hist_vad_ave, 5 )
+                            if split_pos is not None and split_pos>0:
                                 split_pos = (st+split_pos) * self.frame_size
                                 st_sec = self.pos[VOICE]/self.sample_rate
                                 ed_sec = end_pos/self.sample_rate
