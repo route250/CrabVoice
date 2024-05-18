@@ -33,14 +33,12 @@ class VoiceToText(VFunction):
 
     def proc_voice(self,stt_data:SttData):
         try:
-            print(f"[seg_to_text] IN {stt_data}")
             if self.speech_state!=2:
                 self.speech_state=2
                 self.proc_output_event( SttData( SttData.Start, stt_data.utc, stt_data.start, stt_data.start, stt_data.sample_rate, seq=stt_data.seq) )
             audio = stt_data.audio
             next_typ = SttData.Text if SttData.Voice == stt_data.typ else SttData.PreText
             if len(audio)>0:
-                print(f"[seg_to_text] IN 1 {stt_data}")
                 # 音量調整
                 peek = np.max(audio)
                 if peek<0.8:
@@ -57,7 +55,6 @@ class VoiceToText(VFunction):
                 text = ''
             stt_data.typ = next_typ
             stt_data.content = text
-            print(f"[seg_to_text] IN 3 {stt_data}")
             self.proc_output_event(stt_data)
         except:
             logger.exception("audio to text")

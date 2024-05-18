@@ -4,6 +4,7 @@ from logging import getLogger
 import time
 import numpy as np
 from multiprocessing.queues import Queue
+from queue import Empty
 import wave
 import sounddevice as sd
 import librosa
@@ -71,8 +72,9 @@ class SourceToAudio(VFunction):
         self.frame_buffer_cut:np.ndarray = np.zeros( self.frame_size, dtype=np.float32)
         self.num_samples:int = 0
         #
+        self.buffer_sec:float = 31.0
         # AudioFeatureに必要な長さを先に計算
-        self.hists:AudioFeatureBuffer = AudioFeatureBuffer( int(self.sample_rate*30/self.frame_size+0.5) )
+        self.hists:AudioFeatureBuffer = AudioFeatureBuffer( int(self.sample_rate*self.buffer_sec/self.frame_size+0.5) )
         # AudioFeatureの長さからAudioの長さを計算
         self.seg_buffer:RingBuffer = RingBuffer( self.hists.capacity*self.frame_size, dtype=np.float32 )
         self.raw_buffer:RingBuffer = RingBuffer( self.seg_buffer.capacity, dtype=np.float32 )
@@ -81,7 +83,7 @@ class SourceToAudio(VFunction):
 
         # output
         self.out_frames:int = int( self.sample_rate * 0.1 / self.frame_size )
-        self.out_last_pos:int = 0
+        self.out_last_fr:int = 0
 
     def _update_butter(self, orig_sr):
         fpass, fstop, gpass, gstop = self._butter
@@ -119,16 +121,20 @@ class SourceToAudio(VFunction):
 
     def load_mic(self):
         if self.mic_index is not None:
-            if self.mic_index=='' or self.mic_index=='default':
-                inp_dev_list = get_mic_devices(samplerate=self.sample_rate, dtype=np.float32)
-                if inp_dev_list and len(inp_dev_list)>0:
+            inp_dev_list = get_mic_devices(samplerate=self.sample_rate, dtype=np.float32)
+            if inp_dev_list and len(inp_dev_list)>0:
+                if self.mic_index=='' or self.mic_index=='default':
                     self.mic_index = inp_dev_list[0]['index']
                     self.mic_name = inp_dev_list[0]['name']
                     self.mic_sampling_rate = int( inp_dev_list[0].get('default_samplerate',self.sample_rate) )
                     logger.info(f"selected mic : {self.mic_index} {self.mic_name} {self.mic_sampling_rate}")
-                    print(f"selected mic : {self.mic_index} {self.mic_name} {self.mic_sampling_rate}")
                 else:
-                    self.mic_index = None
+                    for m in inp_dev_list:
+                        if m['index'] == self.mic_index:
+                            self.mic_sampling_rate = int( m.get('default_samplerate',self.sample_rate) )
+                print(f"selected mic : {self.mic_index} {self.mic_name} {self.mic_sampling_rate}")
+            else:
+                self.mic_index = None
         elif self.file_path is not None:
             pass
 
@@ -136,7 +142,7 @@ class SourceToAudio(VFunction):
         try:
             self.frame_buffer_len = 0
             self.filt_utc = -1 # フィルタ処理の先頭を無視する指定
-            self.out_last_pos = 0
+            self.out_last_fr = 0
             if self.source_file_path is not None:
                 if self.source_file_path.endswith('.wav'):
                     self.proc_wav_file()
@@ -149,9 +155,26 @@ class SourceToAudio(VFunction):
         finally:
             pass
 
+        # try:
+        #     if self.dump_interval_sec>0:
+        #         audio_sec:float = (end_pos - self.dump_last_pos)/self.sample_rate
+        #         if audio_sec>=self.dump_interval_sec:
+        #             stt_data:SttData = self.to_stt_data( SttData.Dump, utc, self.dump_last_pos, end_pos )
+        #             self.dump_last_pos = end_pos
+        #             self.output_ctl( stt_data )
+
     def _input_seg_size(self, orig_sr:int ) -> int:
         segsize = int( self.sample_rate * ( orig_sr/self.sample_rate ) * 0.1 )
         return segsize
+
+    def proc_ctl(self):
+        try:
+            ev:Ev = self.data_in.get_nowait()
+            if ev.typ == Ev.Stop:
+                return False
+        except Empty:
+            pass
+        return True
 
     def proc_mic(self):
         try:
@@ -163,11 +186,11 @@ class SourceToAudio(VFunction):
             self.audioinput.start()
             rz:int = 0
             self.proc_audio_filter( -1, np.zeros(segsize, dtype=np.float32), True, orig_sr )
-            while self.audioinput is not None:
+            while self.audioinput is not None and self.proc_ctl():
                 mute:bool = self.mic_mute
                 seg2,overflow = self.audioinput.read( segsize )
                 mute = mute or self.mic_mute
-                seg1 = seg2[:1]
+                seg1 = seg2[:,0]
                 rz += len(seg1) 
                 self.proc_audio_filter( utc, seg1, mute, orig_sr )
             self.proc_audio_filter( -2, np.zeros(segsize, dtype=np.float32), True, orig_sr )
@@ -196,7 +219,7 @@ class SourceToAudio(VFunction):
                 audio_time:float = 0.0
                 self.proc_audio_filter( -1, np.zeros(segsize, dtype=np.float32), True, orig_sr )
                 mute:bool = False
-                while True:
+                while self.proc_ctl():
                     x = stream.readframes(segsize)
                     if x is None or len(x)==0:
                         print( f"wave {audio_time:.2f}/{total_time:.2f} {pos}/{total_length}")
@@ -241,6 +264,8 @@ class SourceToAudio(VFunction):
                 self.proc_audio_filter( -1, np.zeros(segsize, dtype=np.float32), True, orig_sr )
                 mute:bool = False
                 for pos in range( 0, total_length, segsize ):
+                    if not self.proc_ctl():
+                        break
                     audio_f32 = pad_to_length( audio[pos:pos+segsize], segsize )
                     audio_time = pos/orig_sr
                     if log_next<=pos:
@@ -273,6 +298,8 @@ class SourceToAudio(VFunction):
                 s = 0
                 xf = int( self.frame_size*xx)
                 while len(a)<total_length:
+                    if not self.proc_ctl():
+                        break
                     a.append(s+1)
                     j += 1
                     if j>=xf:
@@ -341,7 +368,6 @@ class SourceToAudio(VFunction):
 
             if self.filt_utc>=0.0:
                 self.proc_audio_split( self.filt_utc, self.filt_mute, raw, filtered )
-
             # 真ん中のデータの後半にウインドウ関数fade_inを適用してbefore領域にコピー
             self.filt_buf[0:p_main] = self.filt_buf[p_center:p_next] * self.fade_in_window
             #
@@ -396,28 +422,35 @@ class SourceToAudio(VFunction):
             energy = rms_energy(frame, sr=self.sample_rate )
             self.hists.add( frame.max(), frame.min(), 0, vad, energy, zc, 0.0, mute )
 
-            window_offset = int( self.hists.window//2 )
-            last_pos = self.hists.get_pos() - window_offset
+            if self.seg_buffer.get_pos() != self.raw_buffer.get_pos():
+                raise Exception( f"Internal error! missmatch pos in seg and raw")
+            if self.seg_buffer.get_pos() != ( self.hists.get_pos()*self.frame_size):
+                raise Exception( f"Internal error! missmatch pos in seg and hists")
 
-            start_pos = self.out_last_pos
-            end_pos = start_pos + self.out_frames
-            if end_pos<=last_pos:
-                self._proc_output_stt_data( SttData.Audio, utc, start_pos, end_pos )
-                self.out_last_pos = end_pos
+            window_offset = int( self.hists.window//2 )
+            last_fr = self.hists.get_pos() - window_offset
+
+            start_fr = self.out_last_fr
+            end_fr = start_fr + self.out_frames
+            if end_fr<=last_fr:
+                stt_data:SttData = self.to_stt_data( SttData.Audio, utc, start_fr, end_fr )
+                self.proc_output_event( stt_data )
+                self.out_last_fr = end_fr
         except:
             logger.exception(f"")
 
-    def _proc_output_stt_data(self, typ:int, utc:float, start_pos:int, end_pos:int ) ->None:
-        st = start_pos * self.frame_size
-        ed = end_pos * self.frame_size
+    def to_stt_data(self, typ:int, utc:float, start_fr:int, end_fr:int ) ->None:
+        st = start_fr * self.frame_size
+        ed = end_fr * self.frame_size
         stt_data = SttData( typ, utc, st, ed, self.sample_rate )
         b = self.seg_buffer.to_index( st )
         e = self.seg_buffer.to_index( ed )
         stt_data.raw = self.raw_buffer.to_numpy( b, e )
         stt_data.audio = self.seg_buffer.to_numpy( b, e )
 
-        b = self.hists.to_index( start_pos )
-        e = self.hists.to_index( end_pos )
+        b = self.hists.to_index( start_fr )
+        e = self.hists.to_index( end_fr )
         stt_data.hists = self.hists.to_df( b, e )
-        self.proc_output_event( stt_data )
+        return stt_data
+
 

@@ -5,6 +5,7 @@ from logging import getLogger
 import time
 import numpy as np
 from multiprocessing import Queue
+from queue import Empty
 import wave
 import sounddevice as sd
 import librosa
@@ -87,13 +88,19 @@ def test003():
     print("[TEST003] Loop")
     while True:
         try:
+            stt_data:SttData = ctl_out.get( timeout=0.1 )
+            print( f"[CTL] {stt_data}")
+        except Empty:
+            pass
+        try:
             stt_data:SttData = data_out.get( timeout=0.1 )
-            print( f"[OUT] {stt_data} audio:{stt_data.audio.shape} {stt_data.hists.shape}")
-        except:
-            if th1.is_alive() or th2.is_alive() or th3.is_alive() or th4.is_alive():
-                continue
-            else:
-                break
+            print( f"[OUT] {stt_data}")
+        except Empty:
+            pass
+        if th1.is_alive() or th2.is_alive() or th3.is_alive() or th4.is_alive():
+            continue
+        else:
+            break
 
     th1.join()
     print("[TEST003] th1 exit")

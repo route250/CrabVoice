@@ -81,8 +81,9 @@ class AudioToSegment(VFunction):
         self.var1 = 0.3 # 発言とみなすFFTレート
 
         self.frame_size:int = 512
+        self.buffer_sec:float = 31.0
         # AudioFeatureに必要な長さを先に計算
-        self.hists:AudioFeatureBuffer = AudioFeatureBuffer( int(self.sample_rate*30/self.frame_size+0.5) )
+        self.hists:AudioFeatureBuffer = AudioFeatureBuffer( int(self.sample_rate*self.buffer_sec/self.frame_size+0.5) )
         # AudioFeatureの長さからAudioの長さを計算
         self.seg_buffer:RingBuffer = RingBuffer( self.hists.capacity*self.frame_size, dtype=np.float32 )
         self.raw_buffer:RingBuffer = RingBuffer( self.seg_buffer.capacity, dtype=np.float32 )
@@ -99,12 +100,19 @@ class AudioToSegment(VFunction):
         # プリフェッチ用フラグ
         self.prefed:bool=False
 
+        # dump
+        self.dump_last_fr:int = 0
+        self.dump_interval_sec:float = 30.0
+
     def load(self):
         pass
 
     def proc(self,ev:Ev):
         if isinstance(ev,SttData):
             self.proc_stt_data(ev)
+
+    def stop(self):
+        self.proc_output_dump( 0,True)
 
     def proc_stt_data(self,stt_data:SttData):
 
@@ -293,6 +301,7 @@ class AudioToSegment(VFunction):
                     self.pos[VPULSE] = end_pos
 
             self.hists.set_color( hists_idx, self.rec )
+            self.proc_output_dump(utc,False)
 
     def _flush(self,stt_data:SttData):
             start_pos = stt_data.start
@@ -309,3 +318,33 @@ class AudioToSegment(VFunction):
             stt_data.hists = hists
 
             self.proc_output_event( stt_data )
+
+    def to_stt_data(self, typ:int, utc:float, start_fr:int, end_fr:int ) ->None:
+        st = start_fr * self.frame_size
+        ed = end_fr * self.frame_size
+        stt_data = SttData( typ, utc, st, ed, self.sample_rate )
+        b = self.seg_buffer.to_index( st )
+        e = self.seg_buffer.to_index( ed )
+        stt_data.raw = self.raw_buffer.to_numpy( b, e )
+        stt_data.audio = self.seg_buffer.to_numpy( b, e )
+
+        b = self.hists.to_index( start_fr )
+        e = self.hists.to_index( end_fr )
+        stt_data.hists = self.hists.to_df( b, e )
+        return stt_data
+
+    def proc_output_dump(self,utc:float,flush:bool):
+        try:
+            if self.dump_interval_sec<=0:
+                return
+            last_fr = self.hists.get_pos()
+            if self.dump_last_fr>=last_fr:
+                return
+            interval_fr:int = int( (self.sample_rate*self.dump_interval_sec) / self.frame_size )
+            if not flush and (last_fr-self.dump_last_fr)<interval_fr:
+                return
+            stt_data:SttData = self.to_stt_data( SttData.Dump, utc, self.dump_last_fr, last_fr )
+            self.dump_last_fr = last_fr
+            self.output_ctl( stt_data )
+        finally:
+            pass
