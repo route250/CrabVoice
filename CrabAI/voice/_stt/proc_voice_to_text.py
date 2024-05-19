@@ -48,6 +48,7 @@ class VoiceToText(VFunction):
                     text, confidence = RecognizerGoogle.recognize( audio, sample_rate=16000 )
                 except (HTTPError,URLError,TimeoutError) as ex:
                     logger.error( f"recognize {self.model} {str(ex)}")
+                    text = None
                     next_typ = SttData.NetErr
                 t1 = time.time()
                 logger.debug( f"recognize {self.model} time {t1-t0:.4f}/{len(audio)/stt_data.sample_rate:.4f}(sec)")

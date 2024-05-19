@@ -30,8 +30,8 @@ from ..voice_utils import voice_per_audio_rate
 
 class SegmentToVoice(VFunction):
     DEFAULT_BUTTER = [ 100, 10, 10, 90 ] # fpass, fstop, gpass, gstop
-    def __init__(self, data_in:Queue, data_out:Queue, ctl_out:Queue, *, no=None, sample_rate:int=None ):
-        super().__init__(data_in,data_out,ctl_out,no=no)
+    def __init__(self, data_in:Queue, data_out:Queue, ctl_out:Queue, *, no, pmax, sample_rate:int=None ):
+        super().__init__(data_in,data_out,ctl_out,no=no,pmax=pmax)
         self.state:int = 0
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
 

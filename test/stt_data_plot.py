@@ -552,13 +552,14 @@ class SttDataTable(ttk.Frame):
         self.file_path_map = {}
 
         # Frameウィジェットを作成して、Treeviewとスクロールバーを格納
-        self.tree:ttk.Treeview = ttk.Treeview(self, columns=('file','utc', 'start', 'end', 'sec', 'sig','vad', 'content'), show='headings')
+        self.tree:ttk.Treeview = ttk.Treeview(self, columns=('file','utc', 'typ', 'start', 'end', 'sec', 'sig','vad', 'content'), show='headings')
         # 縦スクロールバーの作成
         self.v_scroll = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=self.v_scroll.set)
 
         self.tree.heading('file', text='ファイル名')
         self.tree.heading('utc', text='utc')
+        self.tree.heading('typ', text='type')
         self.tree.heading('start', text='開始フレーム')
         self.tree.heading('end', text='終了フレーム')
         self.tree.heading('sec', text='長さ')
@@ -568,6 +569,7 @@ class SttDataTable(ttk.Frame):
         # カラム幅の設定
         self.tree.column('file', width=100)      # ファイル名カラムの幅
         self.tree.column('utc', width=30)
+        self.tree.column('typ', width=30)
         self.tree.column('start', width=30)      # 開始フレームカラムの幅
         self.tree.column('end', width=30)        # 終了フレームカラムの幅
         self.tree.column('sec', width=20)        # 長さカラムの幅
@@ -629,7 +631,18 @@ class SttDataTable(ttk.Frame):
         sec = (stt_data.end-stt_data.start)/stt_data.sample_rate
         sig=round( max(max(stt_data.hists['hi']),abs(min(stt_data.hists['lo'])) ), 3)
         vad=round( max(stt_data.hists['vad']), 3)
-        iid:str = self.tree.insert('', tk.END, values=( file_name, stt_data.utc, stt_data.start, stt_data.end, sec, sig, vad, stt_data.content))
+        typ = SttData.type_to_str(stt_data.typ)
+        values=( file_name, stt_data.utc, typ, stt_data.start, stt_data.end, sec, sig, vad, stt_data.content)
+        # 挿入位置を見つける
+        children = self.tree.get_children()
+        insert_index = 0
+        for i, child in enumerate(children):
+            item = self.tree.item(child)
+            if stt_data.start < int(item['values'][3]):
+                insert_index = i
+                break
+            insert_index = i + 1
+        iid:str = self.tree.insert('', insert_index, values=values)
         self.stt_data_map[iid] = stt_data  # 結果を辞書に追加
         self.file_path_map[iid] = file_path  # 結果を辞書に追加
 

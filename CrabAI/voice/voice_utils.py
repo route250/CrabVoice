@@ -235,6 +235,9 @@ def _voice_rate( freqs, abs_fft, *, cut:float=100, low:float=100.0, high:float=1
     return round( sum_voice/sum_total, 3 )
 
 def voice_per_audio_rate( audio:np.ndarray, sampling_rate:int ):
-    freqs, abs_fft = fft_audio_signal(audio, sampling_rate )
-    rate = _voice_rate(freqs,abs_fft)
-    return rate
+    if isinstance(audio,np.ndarray) and len(audio)>0:
+        freqs, abs_fft = fft_audio_signal(audio, sampling_rate )
+        rate = _voice_rate(freqs,abs_fft)
+        return rate
+    else:
+        return 0.0

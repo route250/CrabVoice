@@ -196,6 +196,13 @@ class RecognizerGoogle:
         except (HTTPError,TimeoutError,URLError) as ex:
             logger.error( f"google recognize exception: {ex}")
             raise ex
+        if response.getcode() != 200:
+            logger.error( f"google recognize invalid response: {response.getcode()}" )
+            raise HTTPError(response.geturl(), response.getcode(), 'invalid status', response.getheaders(), None)
+        content_type = response.getheader('content-type')
+        if "application/json" not in content_type:
+            logger.error( f"google recognize invalid content-type: {content_type}" )
+            raise HTTPError(response.geturl(), response.getcode(), 'invalid content-type', response.getheaders(), None)
 
         logger.debug( f"google recognize response: {response.status} {response_text}")
 
@@ -204,7 +211,11 @@ class RecognizerGoogle:
         count:int = 0
         for line in response_text.split("\n"):
             if not line: continue
-            data = json.loads(line)
+            try:
+                data = json.loads(line)
+            except json.decoder.JSONDecodeError:
+                logger.error( f"google recognize response line: {line}" )
+                continue
             result = data.get("result")
             if len(result) != 0:
                 actual_result = result[0]

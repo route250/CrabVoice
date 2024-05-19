@@ -4,6 +4,7 @@ from logging import getLogger
 import traceback
 from multiprocessing import Process
 from multiprocessing.queues import Queue
+from heapq import heapify, heappop, heappush
 from queue import Empty
 import numpy as np
 
@@ -16,6 +17,8 @@ class Ev:
 
     def __init__(self, seq:int, typ, *args, **kwargs ):
         self.seq = seq
+        self.no=None
+        self.pmax=None
         self.typ = typ
         self.args = args
         self.kwargs = kwargs
@@ -34,7 +37,9 @@ class Ev:
             return "Nop"
 
     def __str__(self) ->str:
-        return f"[ #{self.seq}, {Ev.type_to_str(self.typ)}, {self.args} {self.kwargs} ]"
+        no = self.no if isinstance(self.no,int) else ''
+        pmax = f"/{self.pmax}" if isinstance(self.pmax,int) else ''
+        return f"[{no}{pmax} #{self.seq}, {Ev.type_to_str(self.typ)}, {self.args} {self.kwargs} ]"
 
     def __getitem__(self, key):
         if not isinstance(key, str):
@@ -47,8 +52,9 @@ class Ev:
 
 class VFunction:
 
-    def __init__(self, data_in:Queue, data_out:Queue, ctl_out:Queue, *, no:int=0):
+    def __init__(self, data_in:Queue, data_out:Queue, ctl_out:Queue, *, no:int=0, pmax:int=0):
         self.no:int = no if isinstance(no,int) and no>0 else 0
+        self.pmax:int = pmax if self.no>0 else 0
         self.title:str = f"{self.__class__.__name__}:{self.no}"
         self._logger = getLogger(self.__class__.__name__)
         self.enable_in = True
@@ -57,6 +63,10 @@ class VFunction:
         self.ctl_out:Queue = ctl_out
         self.seq_count:int = 0
         self.req_brake:bool = False
+        #
+        self.output_next_seq:int = 0
+        self.output_queue:list = []
+        heapify(self.output_queue)
 
     def debug(self,msg,*args,**kwargs):
         self._logger.debug( f"[{self.title}]{msg}",*args,**kwargs)
@@ -77,27 +87,83 @@ class VFunction:
                 ret = {}
             self.ctl_out.put( Ev( ev.seq, ev.typ, **ret) )
 
+    def _get_next_data(self):
+
+        dbg:bool = False # self.__class__.__name__ != "AudioToSegment"
+        if self.no>0:
+            try:
+                while True:
+                    ev:Ev = self.data_in.get( timeout=0.5 )
+                    if ev.typ==Ev.Config or ev.typ==Ev.EndOfData:
+                        no = ev.no if isinstance(ev.no,int) and ev.no>0 else 0
+                        if no==0:
+                            # プロセス全部にブロードキャスト
+                            for i in range(1,self.pmax+1):
+                                ev2:Ev = Ev(ev.seq, ev.typ, **ev.kwargs )
+                                ev2.no=i
+                                ev2.pmax=self.pmax
+                                print(f"[{self.title}] in Q broadcast {str(ev2)}")
+                                self.data_in.put(ev2)
+                            continue
+                        elif no!=self.no:
+                            # 自分のじゃ無いから返却
+                            # print(f"[{self.title}] Q reject {self.no} {str(ev)}")
+                            self.data_in.put(ev)
+                            continue
+                        else:
+                            print(f"[{self.title}] in Q accept {self.no} {str(ev)}")
+                    # ---
+                    self.output_next_seq = ev.seq
+                    return ev
+            except Empty:
+                return None
+
+        # キューを処理する
+        if len(self.output_queue)>0 and self.output_queue[0][0]==self.output_next_seq+1:
+            seq, ev = heappop(self.output_queue)
+            self.output_next_seq=seq
+            if ev is not None:
+                if dbg:
+                    print(f"[{self.title}] Q POP  {str(ev)}")
+                return ev
+
+        while True:
+
+            # get next data
+            try:
+                ev:Ev = self.data_in.get( timeout=0.5 )
+            except Empty:
+                return None
+            # pass through if seq<=0
+            if ev.seq<=0:
+                if dbg:
+                    print(f"[{self.title}] Q pass through {str(ev)}")
+                return ev
+
+            if self.output_next_seq+1==ev.seq:
+                # 順番が一致していればそのままコール
+                self.output_next_seq=ev.seq
+                if dbg:
+                    print(f"[{self.title}] Q seq  {str(ev)}")
+                return ev
+            else:
+                # 順番が来てなければキューに入れる
+                if dbg:
+                    print(f"[{self.title}] Q push {str(ev)}")
+                heappush( self.output_queue, (ev.seq,ev) )
+
     def _event_loop(self):
 
+        xwait = {}
         while not self.req_brake:
             try:
-
-                try:
-                    ev:Ev = self.data_in.get( timeout=0.5 )
-                except Empty:
+                ev:Ev = self._get_next_data()
+                if ev is None:
                     continue
-                self.debug(f"Ev {ev}")
-                try:
-                    if ev is None or ev.typ is None:
-                        self.output(Ev.EndOfData)
-                        break
-                    elif ev.typ == Ev.EndOfData or ev.typ == Ev.Stop:
-                        self.output_ev(ev)
-                        break
-                except:
-                    traceback.print_exc()
-                    break
 
+                self.debug(f"Ev {ev}")
+                if not isinstance(ev.typ,int):
+                    ev.typ = Ev.EndOfData
                 try:
                     if ev.typ == Ev.Config:
                         self._event_configure(ev)
@@ -105,22 +171,41 @@ class VFunction:
                         self.proc(ev)
                 except:
                     traceback.print_exc()
+
+                try:
+                    if ev.typ == Ev.EndOfData or ev.typ == Ev.Stop:
+                        if isinstance(ev.no,int) and ev.no>0:
+                            pmax = ev.pmax if isinstance(ev.pmax,int) and ev.pmax>0 else 1
+                            xwait[f"{ev.no}"]='x'
+                            if len(xwait)>=pmax:
+                                print(f"+++[{self.title}] Q {len(xwait)} accept {str(ev)}")
+                                self.proc_output_event(ev)
+                                break
+                            else:
+                                print(f"+++[{self.title}] Q {len(xwait)} ignore {str(ev)}")
+                        else:
+                            self.proc_output_event(ev)
+                            break
+                except:
+                    traceback.print_exc()
+                    break
+
             except:
                 traceback.print_exc()
                 break
         self.stop()
-        print(f"[{self.__class__.__name__}] End")
+        print(f"[{self.title}] End")
 
     def _event_start(self):
 
-        print(f"[{self.__class__.__name__}] Load")
+        print(f"[{self.title}] Load")
         self.load()
 
         if self.enable_in:
-            print(f"[{self.__class__.__name__}] Event Start")
+            print(f"[{self.title}] Event Start")
             self._event_loop()
         else:
-            print(f"[{self.__class__.__name__}] Process Start")
+            print(f"[{self.title}] Process Start")
             self.proc(None)
             self.output(Ev.EndOfData)
             self.stop()
@@ -128,8 +213,7 @@ class VFunction:
     def output(self, cmd, *args, **kwargs):
         if isinstance(self.data_out,Queue):
             ev = Ev(self.seq_count, cmd, *args, **kwargs )
-            self.seq_count+=1
-            self.output_ev(ev)
+            self.proc_output_event(ev)
 
     def proc_output_event(self, ev:Ev):
         if isinstance(ev,Ev):
@@ -139,10 +223,18 @@ class VFunction:
 
     def output_ev(self, ev:Ev):
         if isinstance(self.data_out,Queue):
+            if self.no>0:
+                ev.no=self.no
+                ev.pmax=self.pmax
+                if ev.typ==Ev.EndOfData:
+                    print(f"&&&[{self.title}] Q output {str(ev)}")
             self.data_out.put(ev)
 
     def output_ctl(self, ev:Ev):
         if isinstance(self.ctl_out,Queue):
+            if self.no>0:
+                ev.no=self.no
+                ev.pmax=self.pmax
             self.ctl_out.put(ev)
 
     def configure(self,key,val):

@@ -97,6 +97,7 @@ class AudioToSegment(VFunction):
         self.prefed:bool=False
 
         # dump
+        self.last_utc:float = 0
         self.dump_last_fr:int = 0
         self.dump_interval_sec:float = 30.0
 
@@ -106,9 +107,11 @@ class AudioToSegment(VFunction):
     def proc(self,ev:Ev):
         if isinstance(ev,SttData):
             self.proc_stt_data(ev)
+        elif ev.typ == Ev.EndOfData or ev.typ == Ev.Stop:
+            self.proc_end_of_data()
 
     def stop(self):
-        self.proc_output_dump( 0,True)
+        pass
 
     def proc_stt_data(self,stt_data:SttData):
 
@@ -142,6 +145,7 @@ class AudioToSegment(VFunction):
             self.proc_audio_data( utc, pos+s, raw, audio, hi, lo, vad, vad_ave, energy, zc, var, mute )
 
     def proc_audio_data(self, utc, pos, frame_raw, frame, hi, lo, vad, vad_ave, energy, zc, var, mute ):
+            self.last_utc = utc
             self.seg_buffer.append(frame)
             self.raw_buffer.append(frame_raw)
             hists_len:int = self.hists.put( hi,lo, self.rec, vad, vad_ave, energy, zc, var, mute )
@@ -185,14 +189,19 @@ class AudioToSegment(VFunction):
                     if seg_len>=self.max_speech_length:
                         # 分割処理
                         ignore = int( self.sample_rate * 0.2 )
-                        st = ( self.pos[VOICE] + ignore ) // self.frame_size
-                        ed = ( end_pos - ignore ) // self.frame_size
-                        hist_vad = self.hists.hist_vad.to_numpy( st, ed )
-                        hist_vad_ave = self.hists.hist_vad.to_numpy( st, ed )
+                        st_fr = ( self.pos[VOICE] + ignore ) // self.frame_size
+                        sti = self.hists.hist_vad.to_index( st_fr )
+                        ed_fr = ( end_pos - ignore ) // self.frame_size
+                        edi = self.hists.hist_vad.to_index( ed_fr )
+                        hist_vad = self.hists.hist_vad.to_numpy( sti, edi )
+                        hist_vad_ave = self.hists.hist_vad.to_numpy( sti, edi )
                         if len(hist_vad)>0:
-                            split_pos = find_lowest_vad_at_slope_increase( hist_vad, hist_vad_ave, 5 )
-                            if split_pos is not None and split_pos>0:
-                                split_pos = (st+split_pos) * self.frame_size
+                            split_idx = find_lowest_vad_at_slope_increase( hist_vad, hist_vad_ave, 5 )
+                            if split_idx is not None and split_idx>0:
+                                split_fr = st_fr + split_idx
+                                split_idx = self.hists.hist_var.to_index(split_fr)
+                                self.hists.set_color(split_idx-1, POST_VOICE )
+                                split_pos = split_fr * self.frame_size
                                 st_sec = self.pos[VOICE]/self.sample_rate
                                 ed_sec = end_pos/self.sample_rate
                                 split_sec = split_pos/self.sample_rate
@@ -204,7 +213,7 @@ class AudioToSegment(VFunction):
                             else:
                                 logger.debug(f"[REC] failled to split ")
                         else:
-                            logger.error(f"[REC] failled to split self.pos[VOICE]:{self.pos[VOICE]} end_pos:{end_pos} seg_len:{seg_len} ignore:{ignore} [{st}:{ed}]" )
+                            logger.error(f"[REC] failled to split self.pos[VOICE]:{self.pos[VOICE]} end_pos:{end_pos} seg_len:{seg_len} ignore:{ignore} [{st_fr}:{ed_fr}]" )
                     else:
                         if is_speech<self.up_trig:
                             self.last_down.push( end_pos, is_speech )
@@ -299,6 +308,18 @@ class AudioToSegment(VFunction):
 
             self.hists.set_color( hists_idx, self.rec )
             self.proc_output_dump(utc,False)
+
+    def proc_end_of_data(self):
+        utc = self.last_utc
+        end_pos = self.seg_buffer.get_pos()
+        if (self.rec == POST_VOICE or self.rec == VOICE) and (end_pos-self.pos[VPULSE])>=self.min_speech_length:
+            # 音声終了処理
+            logger.debug(f"[REC] PostVoice->Term {end_pos}")
+            stt_data = SttData( SttData.Segment, utc, self.pos[VPULSE],end_pos, self.sample_rate )
+            self._flush( stt_data )
+            self.rec = TERM
+            self.pos[TERM] = end_pos
+        self.proc_output_dump( utc,True) 
 
     def _flush(self,stt_data:SttData):
             start_pos = stt_data.start

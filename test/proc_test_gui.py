@@ -254,12 +254,14 @@ class Application(tk.Tk):
         wav_file = self.filename
         th1 = VProcess( SourceToAudio, data_in1, data_in2, ctl_out, sample_rate=16000, mic=mic, source=src )
         th2 = VProcess( AudioToSegment, data_in2, data_in3, ctl_out, sample_rate=16000 )
-        th3 = VProcess( SegmentToVoice, data_in3, data_in4, ctl_out, sample_rate=16000 )
+        th3a = VProcess( SegmentToVoice, data_in3, data_in4, ctl_out, no=1, pmax=2, sample_rate=16000 )
+        th3b = VProcess( SegmentToVoice, data_in3, data_in4, ctl_out, no=2, pmax=2, sample_rate=16000 )
         th4 = VProcess( VoiceToText, data_in4, data_out, ctl_out )
 
         print("[TEST003] Process start")
         th4.start()
-        th3.start()
+        th3a.start()
+        th3b.start()
         th2.start()
         th1.start()
 
@@ -281,7 +283,7 @@ class Application(tk.Tk):
             except Empty:
                 pass
 
-            if th1.is_alive() or th2.is_alive() or th3.is_alive() or th4.is_alive():
+            if th1.is_alive() or th2.is_alive() or th3a.is_alive() or th3b.is_alive() or th4.is_alive():
                 continue
             else:
                 break
@@ -310,6 +312,7 @@ class Application(tk.Tk):
             if self.data_in1 is not None:
                 self.data_in1.put( Ev(0, Ev.Stop) )
                 self.data_in2.put( Ev(0, Ev.Stop) )
+                self.data_in3.put( Ev(0, Ev.Stop) )
                 self.data_in3.put( Ev(0, Ev.Stop) )
                 self.data_in4.put( Ev(0, Ev.Stop) )
 
