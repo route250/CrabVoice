@@ -14,8 +14,8 @@ from .stt_data import SttData
 from .recognizer_google import RecognizerGoogle
 
 class VoiceToText(VFunction):
-    def __init__(self, data_in:Queue, data_out:Queue, ctl_out:Queue ):
-        super().__init__(data_in,data_out,ctl_out)
+    def __init__(self, proc_no:int, num_proc:int, data_in:Queue, data_out:Queue, ctl_out:Queue ):
+        super().__init__(proc_no,num_proc,data_in,data_out,ctl_out)
         self.model='google'
         self.speech_state=0
 
@@ -27,9 +27,12 @@ class VoiceToText(VFunction):
             if SttData.Voice==ev.typ or SttData.PreVoice == ev.typ:
                 self.proc_voice(ev)
             else:
-                self.output_ev(ev)
+                self.proc_output_event(ev)
         else:
-            self.output_ev(ev)
+            if ev.typ==Ev.EndOfData:
+                pass
+            else:
+                self.proc_output_event(ev)
 
     def proc_voice(self,stt_data:SttData):
         try:

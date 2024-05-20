@@ -17,7 +17,7 @@ sys.path.append(os.getcwd())
 from CrabAI.voice._stt.audio_to_text import AudioToText, SttData
 from CrabAI.voice.voice_utils import audio_to_wave_bytes
 from stt_data_plot import SttDataTable, SttDataPlotter
-from CrabAI.vmp import Ev, VFunction, VProcess
+from CrabAI.vmp import Ev, VProcessGrp
 from CrabAI.voice._stt.proc_source_to_audio import SourceToAudio, shrink
 from CrabAI.voice._stt.proc_source_to_audio import get_mic_devices
 from CrabAI.voice._stt.proc_audio_to_segment import AudioToSegment
@@ -212,7 +212,7 @@ class Application(tk.Tk):
     def update_mic_list(self, event):
         inp_dev_list = self.mic_list
         if inp_dev_list is None:
-            inp_dev_list = self.mic_list = get_mic_devices(samplerate=16000, dtype=np.float32)
+            inp_dev_list = self.mic_list = [ {'index':10, 'name': 'default'}] # get_mic_devices(samplerate=16000, dtype=np.float32)
 
         if inp_dev_list and len(inp_dev_list) > 0:
             mic_names = [f"{dev['index']}: {dev['name']}" for dev in inp_dev_list]
@@ -226,8 +226,11 @@ class Application(tk.Tk):
             return
 
         selected_index = int(selected_mic.split(":")[0])
-        self.mic_index = self.mic_list[selected_index]['index']
-        self.mic_name = self.mic_list[selected_index]['name']
+        for m in self.mic_list:
+            if m.get('index') == selected_index:
+                self.mic_index = m['index']
+                self.mic_name = m['name']
+                break
         self.load_button.configure(text=NO_FILE)
         self.filename = None
         #print(f"Selected Mic - Index: {self.mic_index}, Name: {self.mic_name}")
@@ -252,16 +255,14 @@ class Application(tk.Tk):
         elif self.mic_index is not None:
             mic = self.mic_index
         wav_file = self.filename
-        th1 = VProcess( SourceToAudio, data_in1, data_in2, ctl_out, sample_rate=16000, mic=mic, source=src )
-        th2 = VProcess( AudioToSegment, data_in2, data_in3, ctl_out, sample_rate=16000 )
-        th3a = VProcess( SegmentToVoice, data_in3, data_in4, ctl_out, no=1, pmax=2, sample_rate=16000 )
-        th3b = VProcess( SegmentToVoice, data_in3, data_in4, ctl_out, no=2, pmax=2, sample_rate=16000 )
-        th4 = VProcess( VoiceToText, data_in4, data_out, ctl_out )
+        th1 = VProcessGrp( SourceToAudio, 1, data_in1, data_in2, ctl_out, sample_rate=16000, mic=mic, source=src )
+        th2 = VProcessGrp( AudioToSegment, 1, data_in2, data_in3, ctl_out, sample_rate=16000 )
+        th3 = VProcessGrp( SegmentToVoice, 2, data_in3, data_in4, ctl_out, sample_rate=16000 )
+        th4 = VProcessGrp( VoiceToText, 1, data_in4, data_out, ctl_out )
 
         print("[TEST003] Process start")
         th4.start()
-        th3a.start()
-        th3b.start()
+        th3.start()
         th2.start()
         th1.start()
 
@@ -269,24 +270,27 @@ class Application(tk.Tk):
         while True:
             try:
                 stt_data:SttData = ctl_out.get( timeout=0.1 )
+                q1=True
                 if stt_data.typ == SttData.Dump:
                     print( f"[DUMP] {stt_data}")
                     self.update_result( stt_data )
             except Empty:
-                pass
+                q1=False
 
             try:
                 stt_data:SttData = data_out.get( timeout=0.1 )
+                q2=True
                 print( f"[OUT] {stt_data}")
                 if stt_data.typ == SttData.Text:
                     self.update_result( stt_data )
             except Empty:
-                pass
+                q2=False
 
-            if th1.is_alive() or th2.is_alive() or th3a.is_alive() or th3b.is_alive() or th4.is_alive():
+            if q1 or q2 or th1.is_alive() or th2.is_alive() or th3.is_alive() or th4.is_alive():
                 continue
             else:
                 break
+
         self.data_in1 = None
         self.data_in2 = None
         self.data_in3 = None

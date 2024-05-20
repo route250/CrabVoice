@@ -304,7 +304,7 @@ class AudioToSegmentSileroVAD:
             #
             self.seg_buffer.append(frame)
             self.raw_buffer.append(frame_raw)
-            hists_len:int = self.hists.add( frame.max(), frame.min(), self.rec, is_speech, energy, zc, 0.0 )
+            hists_len:int = self.hists.add( frame.max(), frame.min(), self.rec, is_speech, energy, zc, 0.0, self._mute )
             hists_idx:int = hists_len - 1
 
             if self._mute:

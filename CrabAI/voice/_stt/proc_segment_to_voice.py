@@ -17,8 +17,8 @@ from scipy import signal
 _X_VOSK_:bool=False
 try:
     import vosk
-    from vosk import KaldiRecognizer
     vosk.SetLogLevel(-1)
+    from vosk import KaldiRecognizer
     from . import recognizer_vosk
     _X_VOSK:bool=True
 except:
@@ -30,8 +30,8 @@ from ..voice_utils import voice_per_audio_rate
 
 class SegmentToVoice(VFunction):
     DEFAULT_BUTTER = [ 100, 10, 10, 90 ] # fpass, fstop, gpass, gstop
-    def __init__(self, data_in:Queue, data_out:Queue, ctl_out:Queue, *, no, pmax, sample_rate:int=None ):
-        super().__init__(data_in,data_out,ctl_out,no=no,pmax=pmax)
+    def __init__(self, proc_no:int, num_proc:int, data_in:Queue, data_out:Queue, ctl_out:Queue, *, sample_rate:int=None ):
+        super().__init__(proc_no,num_proc,data_in,data_out,ctl_out)
         self.state:int = 0
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
 
@@ -98,39 +98,44 @@ class SegmentToVoice(VFunction):
         return ret
 
     def load(self):
-        logger.info( f"load vosk lang model" )
-        self.vosk_model = recognizer_vosk.get_vosk_model(lang="ja")
-        logger.info( f"load vosk spk model" )
-        self.vosk_spk = recognizer_vosk.get_vosk_spk_model(self.vosk_model)
-        logger.info( f"load vosk grammar" )
-        self.vosk_grammar:str = recognizer_vosk.get_katakana_grammar()
+        if self.vad_vosk:
+            vosk.SetLogLevel(-1)
+            logger.info( f"load vosk lang model" )
+            self.vosk_model = recognizer_vosk.get_vosk_model(lang="ja")
+            logger.info( f"load vosk spk model" )
+            self.vosk_spk = recognizer_vosk.get_vosk_spk_model(self.vosk_model)
+            logger.info( f"load vosk grammar" )
+            self.vosk_grammar:str = recognizer_vosk.get_katakana_grammar()
 
-        if self.vosk_grammar is not None:
-            logger.info( f"create grammar model" )
-            vosk: KaldiRecognizer = KaldiRecognizer(self.vosk_model, int(self.sample_rate), self.vosk_grammar )
+            if self.vosk_grammar is not None:
+                logger.info( f"create grammar model" )
+                recog: KaldiRecognizer = KaldiRecognizer(self.vosk_model, int(self.sample_rate), self.vosk_grammar )
+                if self.vosk_spk is not None:
+                    recog.SetSpkModel( self.vosk_spk )
+                self.vosk_gr = recog
+            else:
+                self.vosk_gr = None
+
+            logger.info( f"create vosk model" )
+            recog: KaldiRecognizer = KaldiRecognizer(self.vosk_model, int(self.sample_rate) )
             if self.vosk_spk is not None:
-                vosk.SetSpkModel( self.vosk_spk )
-            self.vosk_gr = vosk
-        else:
-            self.vosk_gr = None
-
-        logger.info( f"create vosk model" )
-        vosk: KaldiRecognizer = KaldiRecognizer(self.vosk_model, int(self.sample_rate) )
-        if self.vosk_spk is not None:
-            vosk.SetSpkModel( self.vosk_spk )
-        self.vosk_recog = vosk
+                recog.SetSpkModel( self.vosk_spk )
+            self.vosk_recog = recog
 
     def proc(self, ev ):
         if isinstance(ev,SttData):
             if SttData.Segment==ev.typ or SttData.PreSegment == ev.typ:
                 self.proc_segment(ev)
             else:
-                self.output_ev(ev)
+                self.proc_output_event(ev)
         else:
-            self.output_ev(ev)
+            if Ev.EndOfData==ev.typ:
+                pass # このメソッドの外側でoutput_evされる
+            else:
+                self.proc_output_event(ev)
 
     def proc_segment(self, stt_data:SttData):
-        no = self.no
+        no = self.proc_no
         ignore_list = self.ignore_list
         grammer:KaldiRecognizer = self.vosk_gr
         vosk2:KaldiRecognizer = self.vosk_recog
@@ -235,13 +240,13 @@ class SegmentToVoice(VFunction):
                     stt_data.typ = SttData.Voice
                 elif SttData.PreSegment == stt_data.typ:
                     stt_data.typ = SttData.PreVoice
-                self.output_ev(stt_data)
+                self.proc_output_event(stt_data)
                 stt_data = None
         except:
             logger.exception("audio to voice")
         finally:
             if stt_data is not None:
-                ev = Ev( stt_data.seq, Ev.Nop )
-                self.output_ev(ev)
+                stt_data.typ = Ev.Nop
+                self.proc_output_event(stt_data)
 
 

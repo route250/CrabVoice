@@ -44,8 +44,8 @@ def shrink( data:np.ndarray, l:int ):
 
 class SourceToAudio(VFunction):
     DEFAULT_BUTTER = [ 50, 10, 10, 90 ] # fpass, fstop, gpass, gstop
-    def __init__(self, data_in:Queue, data_out:Queue, ctl_out:Queue, *, mic=None, source=None, sample_rate:int=None ):
-        super().__init__(data_in,data_out,ctl_out)
+    def __init__(self, proc_no:int, num_proc:int, data_in:Queue, data_out:Queue, ctl_out:Queue, *, mic=None, source=None, sample_rate:int=None ):
+        super().__init__(proc_no,num_proc,data_in,data_out,ctl_out)
         self.enable_in = False
         self.state:int = 0
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
@@ -121,8 +121,9 @@ class SourceToAudio(VFunction):
 
     def load_mic(self):
         if self.mic_index is not None:
-            inp_dev_list = get_mic_devices(samplerate=self.sample_rate, dtype=np.float32)
+            inp_dev_list = get_mic_devices(samplerate=self.sample_rate, dtype=np.float32,check=False)
             if inp_dev_list and len(inp_dev_list)>0:
+                self.mic_index='default'
                 if self.mic_index=='' or self.mic_index=='default':
                     self.mic_index = inp_dev_list[0]['index']
                     self.mic_name = inp_dev_list[0]['name']
@@ -132,6 +133,7 @@ class SourceToAudio(VFunction):
                     for m in inp_dev_list:
                         if m['index'] == self.mic_index:
                             self.mic_sampling_rate = int( m.get('default_samplerate',self.sample_rate) )
+                            self.mic_name = m.get('name','mic')
                 print(f"selected mic : {self.mic_index} {self.mic_name} {self.mic_sampling_rate}")
             else:
                 self.mic_index = None
@@ -181,7 +183,14 @@ class SourceToAudio(VFunction):
             orig_sr = self.mic_sampling_rate
             segsize = self._input_seg_size(orig_sr)
             self._update_butter( orig_sr )
-            self.audioinput = sd.InputStream( samplerate=orig_sr, device=self.mic_index, dtype=np.float32 )
+            try:
+                self.audioinput = sd.InputStream( device=int(self.mic_index), dtype=np.float32 )
+            except:
+                try:
+                    self.audioinput.close()
+                except:
+                    pass
+                self.audioinput = sd.InputStream( device=int(self.mic_index) )
             utc:float = time.time()
             self.audioinput.start()
             rz:int = 0

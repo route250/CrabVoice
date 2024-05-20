@@ -114,9 +114,10 @@ class SttData(Ev):
         if err:
             err=f"Error {err}"
         spk = 'Spk' if isinstance(self.spk,np.ndarray) else 'NoSpk'
-        no = self.no if isinstance(self.no,int) else ''
-        pmax = f"/{self.pmax}" if isinstance(self.pmax,int) else ''
-        return f"[ {no}{pmax} #{self.seq}, {SttData.type_to_str(self.typ)}, {self.start}({st_sec:.3f}), {self.end}({ed_sec:.3f}), {pos_len}({pos_sec:.3f}), {self.content} {spk}]{err}"
+        no = self.proc_no if isinstance(self.proc_no,int) else ''
+        num = f"/{self.num_proc}" if isinstance(self.num_proc,int) else ''
+        seq = f"#{self.seq}, " if isinstance(self.seq,int) else ''
+        return f"[{no}{num}{seq}{SttData.type_to_str(self.typ)}, {self.start}({st_sec:.3f}), {self.end}({ed_sec:.3f}), {pos_len}({pos_sec:.3f}), {self.content} {spk}]{err}"
 
     def __getitem__(self, key):
         if not isinstance(key, str):

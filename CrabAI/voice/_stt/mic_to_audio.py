@@ -16,7 +16,7 @@ class Mic:
         self.samplerate=samplerate
         self.device=device
         self.dtype = dtype
-        self.InputStream=None
+        self.InputStream:sd.InputStream = None
 
     def __enter__(self):
         # check parameters
@@ -27,9 +27,19 @@ class Mic:
         return self
 
     def __exit__(self, ex_type, ex_value, trace):
-        self.InputStream.abort(ignore_errors=True)
-        self.InputStream.stop(ignore_errors=True)
-        self.InputStream.close(ignore_errors=True)
+        # try:
+        #     self.InputStream.abort(ignore_errors=True)
+        # except:
+        #     pass
+        try:
+            self.InputStream.stop(ignore_errors=True)
+        except:
+            pass
+        try:
+            self.InputStream.close(ignore_errors=True)
+        except:
+            pass
+        return True
 
     def read(self,sz):
         t = Thread( target=self._fn_timeout, daemon=True)
@@ -52,7 +62,7 @@ def _mic_priority(x):
         return 20000 + devid
     return 90000 + devid
 
-def get_mic_devices( *, samplerate=None, dtype=None ):
+def get_mic_devices( *, samplerate=None, dtype=None, check:bool=True ):
     """マイクとして使えるデバイスをリストとして返す"""
     # 条件
     #sr:float = float(samplerate) if samplerate else 16000
@@ -67,14 +77,15 @@ def get_mic_devices( *, samplerate=None, dtype=None ):
         name = f"[{mid:2d}] {x['name']}"
         print(f"try get mic {name} {sr}")
         try:
-            with Mic( samplerate=sr, device=mid, dtype=dtype ) as audio_in:
-                frames,overflow = audio_in.read(1000)
-                if len(frames.shape)>1:
-                    frames = frames[:,0]
-                if max(abs(frames))<1e-9:
-                    logger.debug(f"NoSignal {name}")
-                    continue
-            logger.debug(f"Avairable {name}")
+            if check:
+                with Mic( samplerate=sr, device=mid, dtype=dtype ) as audio_in:
+                    frames,overflow = audio_in.read(1000)
+                    if len(frames.shape)>1:
+                        frames = frames[:,0]
+                    if max(abs(frames))<1e-9:
+                        logger.debug(f"NoSignal {name}")
+                        continue
+                logger.debug(f"Avairable {name}")
             mic_dev_list.append(x)
         except sd.PortAudioError as ex:
             logger.debug(f"NoSupport {name} {str(ex)}")
