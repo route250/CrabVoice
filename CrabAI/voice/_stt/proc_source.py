@@ -88,10 +88,13 @@ def get_mic_devices( *, samplerate=None, dtype=None, check:bool=True ):
                     frames,overflow = audio_in.read(1000)
                     if len(frames.shape)>1:
                         frames = frames[:,0]
-                    if max(abs(frames))<1e-9:
+                    lv = max(abs(frames))
+                    if lv<1e-9:
+                        print(f"NoSignal {name} {sr} {lv}")
                         logger.debug(f"NoSignal {name}")
-                        continue
-                logger.debug(f"Avairable {name}")
+                        #continue
+                print(f"Avairable {name} {sr} {lv}")
+                logger.debug(f"Avairable {name} {sr} {lv}")
             x['label'] = name
             mic_dev_list.append(x)
         except sd.PortAudioError as ex:

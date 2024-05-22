@@ -156,8 +156,8 @@ class SegmentToVoice(VFunction):
             if Accept is None:
                 # 音量調整
                 peek = np.max(stt_audio)
-                if peek<0.8:
-                    stt_audio = stt_audio * (0.8/peek)
+                if 0<peek and peek<0.4:
+                    stt_audio = stt_audio * (0.4/peek)
 
             if Accept is None and grammer:
                 try:
