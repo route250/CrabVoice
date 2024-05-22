@@ -221,13 +221,14 @@ class MicSource(SourceBase):
                 self.source = None
 
     def _mic_callback(self, data:np.ndarray, a,b,c ):
-        self._put_data( self.utc, data, self.mute )
+        xdata = data[:,0].copy()
+        self._put_data( self.utc, xdata, self.mute )
 
     def start_source(self):
         try:
-            orig_sr = self.mic_sampling_rate
+            orig_sr = self.orig_sr = self.mic_sampling_rate
             segsize = input_seg_size( self.sampling_rate,orig_sr)
-            self.audioinput = sd.InputStream( samplerate=orig_sr, channels=1, blocksize=segsize, device=self.source, dtype=np.float32, callback=self._mic_callback )
+            self.audioinput = sd.InputStream( samplerate=orig_sr, blocksize=segsize, device=self.source, dtype=np.float32, callback=self._mic_callback )
             self.utc = time.time()
             self.audioinput.start()
         except:

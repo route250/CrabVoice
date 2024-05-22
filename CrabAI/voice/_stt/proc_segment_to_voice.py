@@ -140,6 +140,9 @@ class SegmentToVoice(VFunction):
         grammer:KaldiRecognizer = self.vosk_gr
         vosk2:KaldiRecognizer = self.vosk_recog
         try:
+            if stt_data.sample_rate != self.sample_rate:
+                return # finallyで処理する
+
             Accept:bool = None
             stt_length = stt_data.end - stt_data.start
             stt_audio = self.audio_filter(stt_data.raw)
@@ -162,6 +165,7 @@ class SegmentToVoice(VFunction):
                     #vosk.SetLogLevel(1)
                     # 判定する範囲
                     vosk_sec = time.time()
+                    # vadが一番高いところを中心に判定する
                     hist_vad:np.ndarray = stt_data['vad']
                     fz:int = stt_length // len(hist_vad)
                     center:int = hist_vad.argmax() * fz

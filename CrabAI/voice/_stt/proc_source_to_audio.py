@@ -71,14 +71,19 @@ class SourceToAudio(VFunction):
         self.out_frames:int = int( self.sample_rate * 0.1 / self.frame_size )
         self.out_last_fr:int = 0
 
+        # sos
+        self.orig_sr:int = -1
+        self.sos = None
+
     def _update_butter(self, orig_sr):
-        fpass, fstop, gpass, gstop = self._butter
-        fn = orig_sr / 2   #ナイキスト周波数
-        wp = fpass / fn  #ナイキスト周波数で通過域端周波数を正規化
-        ws = fstop / fn  #ナイキスト周波数で阻止域端周波数を正規化
-        N, Wn = signal.buttord(wp, ws, gpass, gstop)  #オーダーとバターワースの正規化周波数を計算
-        # self.b, self.a = signal.butter(N, Wn, "high")   #フィルタ伝達関数の分子と分母を計算
-        self.sos = signal.butter(N, Wn, "high", output='sos')   #フィルタ伝達関数の分子と分母を計算
+        if isinstance(orig_sr,int) and orig_sr>=16000 and self.sos is None or self.orig_sr != orig_sr:
+            fpass, fstop, gpass, gstop = self._butter
+            fn = orig_sr / 2   #ナイキスト周波数
+            wp = fpass / fn  #ナイキスト周波数で通過域端周波数を正規化
+            ws = fstop / fn  #ナイキスト周波数で阻止域端周波数を正規化
+            N, Wn = signal.buttord(wp, ws, gpass, gstop)  #オーダーとバターワースの正規化周波数を計算
+            # self.b, self.a = signal.butter(N, Wn, "high")   #フィルタ伝達関数の分子と分母を計算
+            self.sos = signal.butter(N, Wn, "high", output='sos')   #フィルタ伝達関数の分子と分母を計算
 
     def hipass(self,x):
         if self.sos is None:
@@ -102,7 +107,8 @@ class SourceToAudio(VFunction):
             if isinstance(ev,SttData):
                 stt_data: SttData = ev
                 utc = stt_data.utc
-                seg1 = stt_data.raw
+                raw = stt_data.raw
+                # print(f"audio proc {raw.shape} {raw.dtype}")
                 mute = False
                 orig_sr = stt_data.sample_rate
                 if orig_sr is None:
@@ -116,7 +122,7 @@ class SourceToAudio(VFunction):
                     self.segsize = self._input_seg_size(orig_sr)
                     self._update_butter( orig_sr )
                     self.proc_audio_filter( -1, np.zeros(self.segsize, dtype=np.float32), True, orig_sr )
-                self.proc_audio_filter( utc, seg1, mute, orig_sr )
+                self.proc_audio_filter( utc, raw, mute, orig_sr )
             else:
                 if ev.typ == Ev.EndOfData:
                     self.proc_audio_filter( -2, np.zeros(self.segsize, dtype=np.float32), True, self.orig_sr )

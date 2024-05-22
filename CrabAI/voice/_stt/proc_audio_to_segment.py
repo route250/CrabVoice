@@ -97,6 +97,13 @@ class AudioToSegment(VFunction):
         # プリフェッチ用フラグ
         self.prefed:bool=False
 
+        # fade in/out
+        self.fade_frames = int(self.sample_rate*0.05/self.frame_size+1)
+        self.fade_len:int = self.fade_frames * self.frame_size
+        w = signal.windows.hann(self.fade_len*2)
+        self.fade_in_window = w[:self.fade_len]
+        self.fade_out_window = w[self.fade_len:]
+
         # dump
         self.last_utc:float = 0
         self.dump_last_fr:int = 0
@@ -326,17 +333,27 @@ class AudioToSegment(VFunction):
             self.rec=NON_VOICE
         self.proc_output_dump( utc,True) 
 
-    def output_audio_segment(self, typ, utc, start_pos, end_pos ):
+    def output_audio_segment(self, typ, utc, ss, ee ):
+            f1 = len(self.fade_in_window)
+            f2 = len(self.fade_out_window)
+            start_pos = max( ss - f1, self.seg_buffer.to_pos(0) ) # 前余白
+            end_pos = min( ee + f2, self.seg_buffer.get_pos() ) # 後ろ余白
             stt_data = SttData( typ, utc, start_pos, end_pos, self.sample_rate )
 
-            b = self.seg_buffer.to_index( start_pos )
-            e = self.seg_buffer.to_index( end_pos )
-            stt_data.raw = self.raw_buffer.to_numpy( b, e )
-            stt_data.audio = self.seg_buffer.to_numpy( b, e )
+            start_idx = self.seg_buffer.to_index( start_pos )
+            end_idx = self.seg_buffer.to_index( end_pos )
+            audio = self.raw_buffer.to_numpy( start_idx, end_idx )
+            audio[:f1] = audio[:f1] * self.fade_in_window
+            audio[-f2:] = audio[-f2:] * self.fade_out_window
+            stt_data.raw = audio
+            audio = self.seg_buffer.to_numpy( start_idx, end_idx )
+            audio[:f1] = audio[:f1] * self.fade_in_window
+            audio[-f2:] = audio[-f2:] * self.fade_out_window
+            stt_data.audio = audio
 
-            b = self.hists.to_index( start_pos // self.frame_size )
-            e = self.hists.to_index( end_pos//self.frame_size )
-            hists = self.hists.to_df( b, e )
+            start_idx = self.hists.to_index( start_pos // self.frame_size )
+            end_idx = self.hists.to_index( end_pos//self.frame_size )
+            hists = self.hists.to_df( start_idx, end_idx )
             stt_data.hists = hists
 
             self.proc_output_event( stt_data )

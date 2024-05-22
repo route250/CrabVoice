@@ -99,10 +99,10 @@ class SttData(Ev):
         return Ev.type_to_str(typ)  
 
     def __str__(self) ->str:
-        st_sec = self.start/self.sample_rate
-        ed_sec = self.end/self.sample_rate
+        st_sec = self.start/self.sample_rate if self.sample_rate>0 else -1
+        ed_sec = self.end/self.sample_rate if self.sample_rate>0 else -1
         pos_len = self.end-self.start
-        pos_sec = pos_len/self.sample_rate
+        pos_sec = pos_len/self.sample_rate if self.sample_rate>0 else -1
         raw_len = self.raw.shape[0] if isinstance(self.raw,np.ndarray) else -1
         audio_len = self.audio.shape[0] if isinstance(self.audio,np.ndarray) else -1
         hists_len = self.hists.shape[0] if isinstance(self.audio,pd.DataFrame) else -1
