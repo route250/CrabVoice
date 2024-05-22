@@ -1,22 +1,15 @@
-import sys,os
-import platform
 from logging import getLogger
 import time
 import numpy as np
 from multiprocessing.queues import Queue
 from queue import Empty
-import wave
-import sounddevice as sd
 import librosa
 from scipy import signal
 
 from CrabAI.vmp import Ev, VFunction, VProcess
-from .mic_to_audio import get_mic_devices
 from .stt_data import SttData
 from .ring_buffer import RingBuffer
 from .hists import AudioFeatureBuffer
-from .low_pos import LowPos
-from ..voice_utils import voice_per_audio_rate
 from .silero_vad import SileroVAD
 
 logger = getLogger(__name__)
@@ -44,18 +37,11 @@ def shrink( data:np.ndarray, l:int ):
 
 class SourceToAudio(VFunction):
     DEFAULT_BUTTER = [ 50, 10, 10, 90 ] # fpass, fstop, gpass, gstop
-    def __init__(self, proc_no:int, num_proc:int, data_in:Queue, data_out:Queue, ctl_out:Queue, *, mic=None, source=None, sample_rate:int=None ):
+    def __init__(self, proc_no:int, num_proc:int, data_in:Queue, data_out:Queue, ctl_out:Queue, sample_rate:int=None ):
         super().__init__(proc_no,num_proc,data_in,data_out,ctl_out)
-        self.enable_in = False
         self.state:int = 0
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
-        self.mic_index = mic
-        self.mic_name = None
-        self.mic_sampling_rate = None
-        self.audioinput:sd.InputStream = None
-        self.mic_mute:bool = False
-        #
-        self.source_file_path = source
+
         # for filter
         self.filt_mute:bool = True
         self.filt_utc:float = 0
@@ -111,232 +97,36 @@ class SourceToAudio(VFunction):
         self.silerovad.load()
         self.silerovad.is_speech( np.zeros( self.frame_size, dtype=np.float32))
 
-        if self.source_file_path is not None:
-            self.load_file()
-        elif self.mic_index is not None:
-            self.load_mic()
-
-    def load_file(self):
-        pass
-
-    def load_mic(self):
-        if self.mic_index is not None:
-            inp_dev_list = get_mic_devices(samplerate=self.sample_rate, dtype=np.float32,check=False)
-            if inp_dev_list and len(inp_dev_list)>0:
-                self.mic_index='default'
-                if self.mic_index=='' or self.mic_index=='default':
-                    self.mic_index = inp_dev_list[0]['index']
-                    self.mic_name = inp_dev_list[0]['name']
-                    self.mic_sampling_rate = int( inp_dev_list[0].get('default_samplerate',self.sample_rate) )
-                    logger.info(f"selected mic : {self.mic_index} {self.mic_name} {self.mic_sampling_rate}")
-                else:
-                    for m in inp_dev_list:
-                        if m['index'] == self.mic_index:
-                            self.mic_sampling_rate = int( m.get('default_samplerate',self.sample_rate) )
-                            self.mic_name = m.get('name','mic')
-                print(f"selected mic : {self.mic_index} {self.mic_name} {self.mic_sampling_rate}")
-            else:
-                self.mic_index = None
-        elif self.file_path is not None:
-            pass
-
-    def proc(self, ev ):
+    def proc( self, ev:Ev ):
         try:
-            self.frame_buffer_len = 0
-            self.filt_utc = -1 # フィルタ処理の先頭を無視する指定
-            self.out_last_fr = 0
-            if self.source_file_path is not None:
-                if self.source_file_path.endswith('.wav'):
-                    self.proc_wav_file()
-                elif self.source_file_path.endswith('.npz'):
-                    self.start_stt_data_file()
-            elif self.mic_index is not None:
-                self.proc_mic()
+            if isinstance(ev,SttData):
+                stt_data: SttData = ev
+                utc = stt_data.utc
+                seg1 = stt_data.raw
+                mute = False
+                orig_sr = stt_data.sample_rate
+                if orig_sr is None:
+                    print(f"ERROR: can not open mic")
+                if self.state==0:
+                    self.state=1
+                    self.frame_buffer_len = 0
+                    self.filt_utc = -1 # フィルタ処理の先頭を無視する指定
+                    self.out_last_fr = 0
+                    self.orig_sr = orig_sr
+                    self.segsize = self._input_seg_size(orig_sr)
+                    self._update_butter( orig_sr )
+                    self.proc_audio_filter( -1, np.zeros(self.segsize, dtype=np.float32), True, orig_sr )
+                self.proc_audio_filter( utc, seg1, mute, orig_sr )
             else:
-                self.proc_debug_data()
-        finally:
-            pass
-
-        # try:
-        #     if self.dump_interval_sec>0:
-        #         audio_sec:float = (end_pos - self.dump_last_pos)/self.sample_rate
-        #         if audio_sec>=self.dump_interval_sec:
-        #             stt_data:SttData = self.to_stt_data( SttData.Dump, utc, self.dump_last_pos, end_pos )
-        #             self.dump_last_pos = end_pos
-        #             self.output_ctl( stt_data )
+                if ev.typ == Ev.EndOfData:
+                    self.proc_audio_filter( -2, np.zeros(self.segsize, dtype=np.float32), True, self.orig_sr )
+                    self.state=0
+        except:
+            logger.excption("proc")
 
     def _input_seg_size(self, orig_sr:int ) -> int:
         segsize = int( self.sample_rate * ( orig_sr/self.sample_rate ) * 0.1 )
         return segsize
-
-    def proc_ctl(self):
-        try:
-            ev:Ev = self.data_in.get_nowait()
-            if ev.typ == Ev.Stop:
-                return False
-        except Empty:
-            pass
-        return True
-
-    def proc_mic(self):
-        try:
-            orig_sr = self.mic_sampling_rate
-            segsize = self._input_seg_size(orig_sr)
-            self._update_butter( orig_sr )
-            try:
-                self.audioinput = sd.InputStream( device=int(self.mic_index), dtype=np.float32 )
-            except:
-                try:
-                    self.audioinput.close()
-                except:
-                    pass
-                self.audioinput = sd.InputStream( device=int(self.mic_index) )
-            utc:float = time.time()
-            self.audioinput.start()
-            rz:int = 0
-            self.proc_audio_filter( -1, np.zeros(segsize, dtype=np.float32), True, orig_sr )
-            while self.audioinput is not None and self.proc_ctl():
-                mute:bool = self.mic_mute
-                seg2,overflow = self.audioinput.read( segsize )
-                mute = mute or self.mic_mute
-                seg1 = seg2[:,0]
-                rz += len(seg1) 
-                self.proc_audio_filter( utc, seg1, mute, orig_sr )
-            self.proc_audio_filter( -2, np.zeros(segsize, dtype=np.float32), True, orig_sr )
-        except:
-            logger.exception('callback')
-        finally:
-            pass
-
-    def proc_wav_file(self, *, wait:bool=False ):
-        """waveファイルをリードして分割して次の処理に渡す"""
-        self.state=1
-        try:
-            utc:float = 0.0
-            with wave.open( self.source_file_path, 'rb' ) as stream:
-                ch = stream.getnchannels()
-                orig_sr = stream.getframerate()
-                sw = stream.getsampwidth()
-                total_length = stream.getnframes()
-                segsize = self._input_seg_size(orig_sr)
-                self._update_butter( orig_sr )
-                total_time = total_length/orig_sr
-                log_inverval = orig_sr * 5
-                log_next = 0
-                start_time = time.time()
-                pos = 0
-                audio_time:float = 0.0
-                self.proc_audio_filter( -1, np.zeros(segsize, dtype=np.float32), True, orig_sr )
-                mute:bool = False
-                while self.proc_ctl():
-                    x = stream.readframes(segsize)
-                    if x is None or len(x)==0:
-                        print( f"wave {audio_time:.2f}/{total_time:.2f} {pos}/{total_length}")
-                        break
-                    pcm2 = np.frombuffer( x, dtype=np.int16).reshape(-1,ch)
-                    pcm = pad_to_length( pcm2[:,0], segsize )
-                    audio_time = pos / orig_sr
-                    if log_next<=pos:
-                        log_next = pos + log_inverval
-                        print( f"wave {audio_time:.2f}/{total_time:.2f} {pos}/{total_length}")
-                    audio_f32 = pcm/32768.0
-                    if wait:
-                        wa = (start_time + audio_time) - time.time()
-                        if wa>0:
-                            time.sleep( wa )
-                    self.proc_audio_filter( utc, audio_f32, mute, orig_sr )
-                    pos += len(pcm)
-                self.proc_audio_filter( -2, np.zeros(segsize, dtype=np.float32), True, orig_sr )
-        except:
-            logger.exception(f"filename:{self.source_file_path}")
-        finally:
-            self.state = 0
-
-    def start_stt_data_file(self, *, wait:bool=False ):
-        """SttDataから音声データをリードして分割して次の処理に渡す"""
-        self.state=1
-        try:
-                stt_data:SttData = SttData.load( self.source_file_path )
-                audio = stt_data['raw']
-                if audio is None:
-                    audio = stt_data['audio']
-            
-                utc:float = stt_data.utc
-                orig_sr = stt_data.sample_rate
-                segsize = self._input_seg_size(orig_sr)
-                self._update_butter( orig_sr )
-                total_length = len(audio)
-                total_time = total_length/orig_sr
-                log_inverval = orig_sr * 5
-                log_next = 0
-                start_time = time.time()
-                self.proc_audio_filter( -1, np.zeros(segsize, dtype=np.float32), True, orig_sr )
-                mute:bool = False
-                for pos in range( 0, total_length, segsize ):
-                    if not self.proc_ctl():
-                        break
-                    audio_f32 = pad_to_length( audio[pos:pos+segsize], segsize )
-                    audio_time = pos/orig_sr
-                    if log_next<=pos:
-                        log_next=pos+log_inverval
-                        print( f"SttData {audio_time:.2f}/{total_time:.2f} {pos}/{total_length}")
-                    if wait:
-                        wa = (start_time+audio_time) - time.time()
-                        if wa>0.0:
-                            time.sleep( wa )
-                    self.proc_audio_filter( utc, audio_f32, mute, orig_sr )
-                self.proc_audio_filter( -2, np.zeros(segsize, dtype=np.float32), True, orig_sr )
-        except:
-            logger.exception(f"filename:{self.source_file_path}")
-        finally:
-            self.state = 0
-
-    def proc_debug_data(self, *, wait:bool=False ):
-        """デバッグデータを分割して次の処理に渡す"""
-        self.state=1
-        try:
-                utc:float = 0.0
-                xx = 3
-                orig_sr = int(self.sample_rate * xx)
-                segsize = self._input_seg_size(orig_sr)
-                self.sos=None
-                total_length = int(orig_sr * 3 )
-                print(f"[debug] sr:{orig_sr} segsize:{segsize} length:{total_length}")
-                a = []
-                j = 0
-                s = 0
-                xf = int( self.frame_size*xx)
-                while len(a)<total_length:
-                    if not self.proc_ctl():
-                        break
-                    a.append(s+1)
-                    j += 1
-                    if j>=xf:
-                        s+=1
-                        j=0
-                audio:np.ndarray = np.array( a, dtype=np.float32 )
-                total_time = total_length/orig_sr
-                log_inverval = orig_sr * 5
-                log_next = 0
-                start_time = time.time()
-                self.proc_audio_filter( -1, np.zeros(segsize, dtype=np.float32), True, orig_sr )
-                mute:bool = False
-                for pos in range( 0, total_length, segsize ):
-                    audio_f32 = pad_to_length( audio[pos:pos+segsize], segsize )
-                    audio_time = pos/orig_sr
-                    if log_next<=pos:
-                        log_next=pos+log_inverval
-                        print( f"Debug {audio_time:.2f}/{total_time:.2f} {pos}/{total_length}")
-                    if wait:
-                        wa = (start_time+audio_time) - time.time()
-                        if wa>0.0:
-                            time.sleep( wa )
-                    self.proc_audio_filter( utc, audio_f32, mute, orig_sr )
-                self.proc_audio_filter( -2, np.zeros(segsize, dtype=np.float32), True, orig_sr )
-        except:
-            logger.exception(f"filename:{self.source_file_path}")
-        finally:
-            self.state = 0
 
     def proc_audio_filter(self, utc:float, raw_audio:np.ndarray, mute:bool, orig_sr:int):
         """音声データにフィルタを適用して次の処理へ"""

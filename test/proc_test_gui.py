@@ -18,8 +18,8 @@ from CrabAI.voice._stt.audio_to_text import AudioToText, SttData
 from CrabAI.voice.voice_utils import audio_to_wave_bytes
 from stt_data_plot import SttDataTable, SttDataPlotter
 from CrabAI.vmp import Ev, VProcessGrp
+from CrabAI.voice._stt.proc_source import MicSource, WavSource, SttSource, get_mic_devices
 from CrabAI.voice._stt.proc_source_to_audio import SourceToAudio, shrink
-from CrabAI.voice._stt.proc_source_to_audio import get_mic_devices
 from CrabAI.voice._stt.proc_audio_to_segment import AudioToSegment
 from CrabAI.voice._stt.proc_segment_to_voice import SegmentToVoice
 from CrabAI.voice._stt.proc_voice_to_text import VoiceToText
@@ -85,6 +85,7 @@ class Application(tk.Tk):
         self._idle_loop()
 
         self.stt=None
+        self.src = None
         self.data_in1 = None
         self.data_in2 = None
         self.data_in3 = None
@@ -212,10 +213,10 @@ class Application(tk.Tk):
     def update_mic_list(self, event):
         inp_dev_list = self.mic_list
         if inp_dev_list is None:
-            inp_dev_list = self.mic_list = [ {'index':10, 'name': 'default'}] # get_mic_devices(samplerate=16000, dtype=np.float32)
+            inp_dev_list = self.mic_list = get_mic_devices(samplerate=16000, dtype=np.float32)
 
         if inp_dev_list and len(inp_dev_list) > 0:
-            mic_names = [f"{dev['index']}: {dev['name']}" for dev in inp_dev_list]
+            mic_names = [dev['label'] for dev in inp_dev_list]
             self.mic_combobox['values'] = mic_names
         else:
             self.mic_combobox['values'] = [MIC_NOT_FOUND]
@@ -225,9 +226,8 @@ class Application(tk.Tk):
         if self.mic_list is None or selected_mic is None or MIC_NOT_FOUND in selected_mic:
             return
 
-        selected_index = int(selected_mic.split(":")[0])
         for m in self.mic_list:
-            if m.get('index') == selected_index:
+            if m.get('label') == selected_mic:
                 self.mic_index = m['index']
                 self.mic_name = m['name']
                 break
@@ -248,14 +248,15 @@ class Application(tk.Tk):
         data_in4 = self.data_in4 = PQ()
         data_out= self.data_out = PQ()
         # 
-        src=None
-        mic=None
+        self.src=None
         if self.filename is not None:
-            src = self.filename
+            if self.filename.endswith('.pyz'):
+                self.src = SttSource( data_in1, source=self.filename, sampling_rate=16000 )
+            else:
+                self.src = WavSource( data_in1, source=self.filename, sampling_rate=16000 )
         elif self.mic_index is not None:
-            mic = self.mic_index
-        wav_file = self.filename
-        th1 = VProcessGrp( SourceToAudio, 1, data_in1, data_in2, ctl_out, sample_rate=16000, mic=mic, source=src )
+            self.src = MicSource( data_in1, source=self.mic_index, sampling_rate=16000 )
+        th1 = VProcessGrp( SourceToAudio, 1, data_in1, data_in2, ctl_out, sample_rate=16000)
         th2 = VProcessGrp( AudioToSegment, 1, data_in2, data_in3, ctl_out, sample_rate=16000 )
         th3 = VProcessGrp( SegmentToVoice, 2, data_in3, data_in4, ctl_out, sample_rate=16000 )
         th4 = VProcessGrp( VoiceToText, 1, data_in4, data_out, ctl_out )
@@ -265,6 +266,7 @@ class Application(tk.Tk):
         th3.start()
         th2.start()
         th1.start()
+        self.src.start()
 
         print("[TEST003] Loop")
         while True:
@@ -297,6 +299,7 @@ class Application(tk.Tk):
         self.data_in4 = None
         self.data_out = None
         self.ctl_out = None
+        self.src = None
         self.run_button.configure( text=BTN_RUN)
 
     def stop_analysis(self):
@@ -314,6 +317,7 @@ class Application(tk.Tk):
                 print("ファイルが選択されていません")
         else:
             if self.data_in1 is not None:
+                self.src.stop()
                 self.data_in1.put( Ev(0, Ev.Stop) )
                 self.data_in2.put( Ev(0, Ev.Stop) )
                 self.data_in3.put( Ev(0, Ev.Stop) )

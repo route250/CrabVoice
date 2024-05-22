@@ -13,6 +13,7 @@ from scipy import signal
 
 from CrabAI.voice._stt.stt_data import SttData
 from CrabAI.vmp import Ev, VFunction, VProcessGrp
+from CrabAI.voice._stt.proc_source import MicSource, WavSource
 from CrabAI.voice._stt.proc_source_to_audio import SourceToAudio, shrink
 from CrabAI.voice._stt.proc_audio_to_segment import AudioToSegment
 from CrabAI.voice._stt.proc_segment_to_voice import SegmentToVoice
@@ -72,10 +73,12 @@ def test003():
     data_out= PQ()
     # 
     wav_file = 'testData/voice_mosimosi.wav'
-    wav_file = 'testData/voice_command.wav'
+    # wav_file = 'testData/voice_command.wav'
     #wav_file = 'testData/audio_100Km_5500rpm.wav'
     wav_file = 'testData/nakagawke01.wav'
-    th1 = VProcessGrp( SourceToAudio, 1, data_in1, data_in2, ctl_out, source=wav_file, sample_rate=16000 )
+    #src = MicSource( data_in1, mic_index=10, sampling_rate=16000 )
+    src = WavSource( data_in1, sampling_rate=16000, source=wav_file  )
+    th1 = VProcessGrp( SourceToAudio, 1, data_in1, data_in2, ctl_out, sample_rate=16000 )
     th2 = VProcessGrp( AudioToSegment, 1, data_in2, data_in3, ctl_out, sample_rate=16000 )
     th3 = VProcessGrp( SegmentToVoice, 3, data_in3, data_in4, ctl_out, sample_rate=16000 )
     th4 = VProcessGrp( VoiceToText, 1, data_in4, data_out, ctl_out )
@@ -85,9 +88,13 @@ def test003():
     th3.start()
     th2.start()
     th1.start()
+    src.start()
 
     print("[TEST003] Loop")
+    st=time.time()
     while True:
+        if (time.time()-st)>180.0:
+            src.stop()
         try:
             stt_data:SttData = ctl_out.get( timeout=0.1 )
             print( f"[CTL] {stt_data}")
@@ -102,7 +109,6 @@ def test003():
             continue
         else:
             break
-
     th1.join()
     print("[TEST003] th1 exit")
     th2.join()
@@ -111,6 +117,14 @@ def test003():
     print("[TEST003] th3 exit")
     th4.join()
     print("[TEST003] th4 for exit")
+
+
+def test_mic():
+    q=PQ()
+    src=MicSource(q,10,16000)
+    src.start()
+    time.sleep(10)
+    src.stop()
 
 if __name__ == "__main__":
     test003()
