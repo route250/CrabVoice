@@ -251,11 +251,11 @@ class Application(tk.Tk):
         self.src=None
         if self.filename is not None:
             if self.filename.endswith('.pyz'):
-                self.src = SttSource( data_in1, source=self.filename, sampling_rate=16000 )
+                self.src = SttSource( data_in1, ctl_out,source=self.filename, sampling_rate=16000 )
             else:
-                self.src = WavSource( data_in1, source=self.filename, sampling_rate=16000 )
+                self.src = WavSource( data_in1, ctl_out,source=self.filename, sampling_rate=16000 )
         elif self.mic_index is not None:
-            self.src = MicSource( data_in1, source=self.mic_index, sampling_rate=16000 )
+            self.src = MicSource( data_in1, ctl_out,source=self.mic_index, sampling_rate=16000 )
         th1 = VProcessGrp( SourceToAudio, 1, data_in1, data_in2, ctl_out, sample_rate=16000)
         th2 = VProcessGrp( AudioToSegment, 1, data_in2, data_in3, ctl_out, sample_rate=16000 )
         th3 = VProcessGrp( SegmentToVoice, 2, data_in3, data_in4, ctl_out, sample_rate=16000 )

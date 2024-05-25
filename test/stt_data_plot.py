@@ -86,6 +86,8 @@ class SttDataPlotter(ttk.Frame):
         self.y_min = 0.0
         self.y_max = 1.5
 
+        self.dir_path = None
+
     def set_stt_data(self, stt_data: SttData):
 
         self._stt_Data: SttData = stt_data
@@ -382,12 +384,19 @@ class SttDataPlotter(ttk.Frame):
 
     def save_audio(self):
         stt_data:SttData = self._stt_Data
-        file_path = stt_data.filepath
         if stt_data is not None and stt_data.audio is not None:
             st_sec, ed_sec = self.get_xlim()
-            file_name, _ = os.path.splitext(os.path.basename(file_path)) if file_path is not None else None
+            file_path = stt_data.filepath
+            file_name, _ = os.path.splitext(os.path.basename(file_path)) if file_path is not None else None,None
+            dir_path = self.dir_path
+            if not dir_path or os.path.is_dir(dir_path):
+                dir_path = self.dir_path = "."
             files = [('Wave Files', '*.wav'),('All Files', '*.*')]  
-            out = filedialog.asksaveasfilename( filetypes=files, initialdir=self.dir_path, initialfile=file_name, confirmoverwrite=True, defaultextension=files )
+            out = filedialog.asksaveasfilename( filetypes=files, initialdir=dir_path, initialfile=file_name, confirmoverwrite=True, defaultextension=files )
+            if os.path.is_file():
+                dir_path = self.dir_path = os.path.dirname(out)
+            elif os.path.is_dir():
+                dir_path = self.dir_path = out
             st = max(0, int(st_sec * stt_data.sample_rate) - stt_data.start)
             ed = min( len(stt_data.audio), int(ed_sec * stt_data.sample_rate) - stt_data.start )
             audio_to_wave( out, stt_data.audio[st:ed], samplerate=stt_data.sample_rate)
