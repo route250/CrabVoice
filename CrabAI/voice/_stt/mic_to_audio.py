@@ -37,8 +37,11 @@ class Mic:
             pass
         try:
             self.InputStream.close(ignore_errors=True)
+            return self.InputStream.__exit__(ex_type,ex_value,trace)
         except:
             pass
+        finally:
+            self.InputStream = None
         return True
 
     def read(self,sz):
@@ -86,6 +89,7 @@ def get_mic_devices( *, samplerate=None, dtype=None, check:bool=True ):
                         logger.debug(f"NoSignal {name}")
                         continue
                 logger.debug(f"Avairable {name}")
+            x['label'] = name
             mic_dev_list.append(x)
         except sd.PortAudioError as ex:
             logger.debug(f"NoSupport {name} {str(ex)}")

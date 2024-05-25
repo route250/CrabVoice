@@ -129,9 +129,10 @@ class SourceBase:
     StAbort:int = 3
     StStopped:int = 4
 
-    def __init__(self, data_out:Queue, *, source, sampling_rate:int=None):
+    def __init__(self, data_out:Queue, ctl_out:Queue, *, source, sampling_rate:int=None):
         self.state:int = SourceBase.StInit
         self.data_out:Queue = data_out
+        self.ctl_out:Queue = ctl_out
         self.source = source
         self.sampling_rate:int = int(sampling_rate) if isinstance(sampling_rate,(int,float)) and sampling_rate>0 else 16000
         self.orig_sr:int = 0
@@ -198,8 +199,8 @@ class SourceBase:
 
 class MicSource(SourceBase):
 
-    def __init__(self, data_out:Queue, source, sampling_rate:int=None, mic_sampling_rate:int=None):
-        super().__init__( data_out, source=source, sampling_rate=sampling_rate )
+    def __init__(self, data_out:Queue, ctl_out:Queue, source, sampling_rate:int=None, mic_sampling_rate:int=None):
+        super().__init__( data_out, ctl_out, source=source, sampling_rate=sampling_rate )
         self.mic_sampling_rate = int(mic_sampling_rate) if isinstance(mic_sampling_rate,(int,float)) and mic_sampling_rate>self.sampling_rate else self.sampling_rate
         self.utc:float = time.time()
         self.mute:bool = False
@@ -246,8 +247,8 @@ class MicSource(SourceBase):
             self.audioinput = None
 
 class ThreadSourceBase(SourceBase):
-    def __init__(self, data_out:Queue, *, source, sampling_rate:int ):
-        super().__init__( data_out, source=source, sampling_rate=sampling_rate )
+    def __init__(self, data_out:Queue, ctl_out:Queue, *, source, sampling_rate:int ):
+        super().__init__( data_out, ctl_out, source=source, sampling_rate=sampling_rate )
         self.wait = False
         self.th:Thread = None
 
