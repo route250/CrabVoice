@@ -391,15 +391,18 @@ class SttDataPlotter(ttk.Frame):
             dir_path = self.dir_path
             if not dir_path or os.path.is_dir(dir_path):
                 dir_path = self.dir_path = "."
-            files = [('Wave Files', '*.wav'),('All Files', '*.*')]  
+            files = [('Wave Files', '*.wav'), ('SttData Files', '*.npz'),('All Files', '*.*')]  
             out = filedialog.asksaveasfilename( filetypes=files, initialdir=dir_path, initialfile=file_name, confirmoverwrite=True, defaultextension=files )
-            if os.path.is_file():
+            if os.path.isfile(out):
                 dir_path = self.dir_path = os.path.dirname(out)
-            elif os.path.is_dir():
+            elif os.path.isdir(out):
                 dir_path = self.dir_path = out
-            st = max(0, int(st_sec * stt_data.sample_rate) - stt_data.start)
-            ed = min( len(stt_data.audio), int(ed_sec * stt_data.sample_rate) - stt_data.start )
-            audio_to_wave( out, stt_data.audio[st:ed], samplerate=stt_data.sample_rate)
+            if out.endswith('.npz'):
+                stt_data.save( out )
+            else:
+                st = max(0, int(st_sec * stt_data.sample_rate) - stt_data.start)
+                ed = min( len(stt_data.audio), int(ed_sec * stt_data.sample_rate) - stt_data.start )
+                audio_to_wave( out, stt_data.audio[st:ed], samplerate=stt_data.sample_rate)
         else:
             print("ファイルが選択されていません")
 

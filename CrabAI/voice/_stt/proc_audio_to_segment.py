@@ -20,32 +20,51 @@ from .silero_vad import SileroVAD
 
 logger = getLogger(__name__)
 
-def find_lowest_vad_at_slope_increase( moving_averages:np.ndarray, data:np.ndarray, window_size:int):
-    if not isinstance(data,np.ndarray):
+def find_lowest_vad_at_slope_increase( vad_averages:np.ndarray, vad:np.ndarray, energy:np.ndarray, window_size:int):
+    """セグメントを分割する位置を決める"""
+    if not isinstance(vad,np.ndarray):
         raise Exception("not np.ndarray")
-    if len(data.shape)!=1:
+    if len(vad.shape)!=1:
         raise Exception("not np.ndarray")
 
     # 傾きの計算
-    slopes = np.diff(moving_averages)
+    slopes = np.diff(vad_averages)
     
     # 傾きがプラスに変化する位置の特定
-    change_points = np.where((slopes[:-1] <= 0) & (slopes[1:] > 0))[0] + 1
+    threashold:float = 0.05
+    change_points = np.where((slopes[:-1] <= threashold) & (slopes[1:] > threashold))[0] + 1
     if len(change_points)==0:
         return None
 
     # VAD評価値が最も低い点の特定
     lowest_vad = np.inf
-    lowest_idx = None
+    vad_idx = None
     for index in change_points:
         start = max(0, index - window_size)
-        end = min(index + window_size, len(data) - 1)
-        idx = start + np.argmin(data[start:end+1])
-        var = data[idx]
-        if var < lowest_vad:
-            lowest_vad = var
-            lowest_idx = idx
-    return lowest_idx
+        end = min(index + window_size+1, len(vad))
+        idx = start + np.argmin(vad[start:end])
+        value = vad[idx]
+        if value < lowest_vad:
+            lowest_vad = value
+            vad_idx = idx
+    if lowest_vad<0.5:
+        return vad_idx
+
+    # energy評価値が最も低い点の特定
+    lowest_energy = np.inf
+    energy_idx = None
+    for index in change_points:
+        start = max(0, index - window_size)
+        end = min(index + window_size+1, len(vad))
+        idx = start + np.argmin(energy[start:end])
+        value = energy[idx]
+        if value < lowest_energy:
+            lowest_energy = value
+            energy_idx = idx
+    if energy_idx<vad_idx:
+        return energy_idx
+    else:
+        return vad_idx
 
 NON_VOICE=0
 PREFIX=1
@@ -201,11 +220,11 @@ class AudioToSegment(VFunction):
                         ed_fr = ( end_pos - ignore ) // self.frame_size
                         edi = self.hists.hist_vad.to_index( ed_fr )
                         hist_vad_ave = self.hists.hist_vad.to_numpy( sti, edi )
-                        #hist_vad = self.hists.hist_vad.to_numpy( sti, edi )
-                        hist_vad = self.hists.hist_energy.to_numpy( sti, edi )
+                        hist_vad = self.hists.hist_vad.to_numpy( sti, edi )
+                        hist_energy = self.hists.hist_energy.to_numpy( sti, edi )
                         self.rec_max += self.min_speech_length
                         if len(hist_vad_ave)>0:
-                            split_idx = find_lowest_vad_at_slope_increase( hist_vad_ave, hist_vad, 5 )
+                            split_idx = find_lowest_vad_at_slope_increase( hist_vad_ave, hist_vad, hist_energy,5 )
                             if split_idx is not None and split_idx>0:
                                 split_fr = st_fr + split_idx
                                 split_idx = self.hists.hist_var.to_index(split_fr)

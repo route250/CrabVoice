@@ -17,12 +17,9 @@ sys.path.append(os.getcwd())
 from CrabAI.voice._stt.audio_to_text import AudioToText, SttData
 from CrabAI.voice.voice_utils import audio_to_wave_bytes
 from stt_data_plot import SttDataTable, SttDataPlotter
-from CrabAI.vmp import Ev, VProcessGrp
-from CrabAI.voice._stt.proc_source import MicSource, WavSource, SttSource, get_mic_devices
-from CrabAI.voice._stt.proc_source_to_audio import SourceToAudio, shrink
-from CrabAI.voice._stt.proc_audio_to_segment import AudioToSegment
-from CrabAI.voice._stt.proc_segment_to_voice import SegmentToVoice
-from CrabAI.voice._stt.proc_voice_to_text import VoiceToText
+from CrabAI.vmp import Ev
+from CrabAI.voice._stt.proc_source import get_mic_devices
+from CrabAI.voice._stt.proc_stt_engine import SttEngine
 
 def _getvalue(entry):
     try:
@@ -86,12 +83,7 @@ class Application(tk.Tk):
 
         self.stt=None
         self.src = None
-        self.data_in1 = None
-        self.data_in2 = None
-        self.data_in3 = None
-        self.data_in4 = None
-        self.data_out = None
-        self.ctl_out = None
+        self.SttEngine = None
 
     def create_widgets(self):
 
@@ -238,40 +230,25 @@ class Application(tk.Tk):
     # 音声解析関数
     def analysis_audio(self):
 
-        if self.data_in1 is not None:
+        if self.SttEngine is not None:
             return
-        print("[TEST003] Test start")
-        ctl_out = self.ctl_out = PQ()
-        data_in1 = self.data_in1 = PQ()
-        data_in2 = self.data_in2 = PQ()
-        data_in3 = self.data_in3 = PQ()
-        data_in4 = self.data_in4 = PQ()
-        data_out= self.data_out = PQ()
         # 
         self.src=None
         if self.filename is not None:
-            if self.filename.endswith('.pyz'):
-                self.src = SttSource( data_in1, ctl_out,source=self.filename, sampling_rate=16000 )
-            else:
-                self.src = WavSource( data_in1, ctl_out,source=self.filename, sampling_rate=16000 )
+            self.src = self.filename
         elif self.mic_index is not None:
-            self.src = MicSource( data_in1, ctl_out,source=self.mic_index, sampling_rate=16000 )
-        th1 = VProcessGrp( SourceToAudio, 1, data_in1, data_in2, ctl_out, sample_rate=16000)
-        th2 = VProcessGrp( AudioToSegment, 1, data_in2, data_in3, ctl_out, sample_rate=16000 )
-        th3 = VProcessGrp( SegmentToVoice, 2, data_in3, data_in4, ctl_out, sample_rate=16000 )
-        th4 = VProcessGrp( VoiceToText, 1, data_in4, data_out, ctl_out )
+            self.src = self.mic_index
+
+        print("[TEST003] Test start")
+        self.SttEngine:SttEngine = SttEngine( source=self.src, sample_rate=16000, num_vosk=2 )
 
         print("[TEST003] Process start")
-        th4.start()
-        th3.start()
-        th2.start()
-        th1.start()
-        self.src.start()
+        self.SttEngine.start()
 
         print("[TEST003] Loop")
         while True:
             try:
-                stt_data:SttData = ctl_out.get( timeout=0.1 )
+                stt_data:SttData = self.SttEngine.get_ctl( timeout=0.1 )
                 q1=True
                 if stt_data.typ == SttData.Dump:
                     print( f"[DUMP] {stt_data}")
@@ -280,7 +257,7 @@ class Application(tk.Tk):
                 q1=False
 
             try:
-                stt_data:SttData = data_out.get( timeout=0.1 )
+                stt_data:SttData = self.SttEngine.get_data( timeout=0.1 )
                 q2=True
                 print( f"[OUT] {stt_data}")
                 if stt_data.typ == SttData.Text:
@@ -288,17 +265,12 @@ class Application(tk.Tk):
             except Empty:
                 q2=False
 
-            if q1 or q2 or th1.is_alive() or th2.is_alive() or th3.is_alive() or th4.is_alive():
+            if self.SttEngine.is_alive():
                 continue
             else:
                 break
 
-        self.data_in1 = None
-        self.data_in2 = None
-        self.data_in3 = None
-        self.data_in4 = None
-        self.data_out = None
-        self.ctl_out = None
+        self.SttEngine = None
         self.src = None
         self.run_button.configure( text=BTN_RUN)
 
@@ -316,14 +288,8 @@ class Application(tk.Tk):
             else:
                 print("ファイルが選択されていません")
         else:
-            if self.data_in1 is not None:
-                self.src.stop()
-                self.data_in1.put( Ev(0, Ev.Stop) )
-                self.data_in2.put( Ev(0, Ev.Stop) )
-                self.data_in3.put( Ev(0, Ev.Stop) )
-                self.data_in3.put( Ev(0, Ev.Stop) )
-                self.data_in4.put( Ev(0, Ev.Stop) )
-
+            if self.SttEngine is not None:
+                self.SttEngine.stop()
 
     def update_result(self, stt_data:SttData):
         self._ev_queue.put( lambda stt_data=stt_data,file_path=None: self.table.add(stt_data, file_path=file_path) )
