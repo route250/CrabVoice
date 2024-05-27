@@ -1,16 +1,12 @@
 import sys,os,traceback
 import time
-from threading import Condition
+from threading import Thread, Condition
+from queue import Empty
 
 import numpy as np
 
 #from ..stt import RecognizerGoogle, VoiceSplitter, SttEngine
 from .stt import SttData
-from CrabAI.vmp import Ev, VFunction, VProcessGrp
-from CrabAI.voice._stt.proc_source import MicSource, WavSource
-from CrabAI.voice._stt.proc_source_to_audio import SourceToAudio, shrink
-from CrabAI.voice._stt.proc_audio_to_segment import AudioToSegment
-from CrabAI.voice._stt.proc_segment_to_voice import SegmentToVoice
 from CrabAI.voice._stt.proc_source import get_mic_devices
 from CrabAI.voice._stt.proc_stt_engine import SttEngine
 
@@ -37,6 +33,7 @@ class VoiceTalkEngine:
         self.text_buf=[]
         self.text_confidence = 1.0
         self.text_stat=0
+        self.th:Thread = None
         self.stt:SttEngine = None
         self.tts:TtsEngine = TtsEngine( speaker=speaker, talk_callback=self._tts_callback)
 
@@ -100,15 +97,49 @@ class VoiceTalkEngine:
                 self.stt = SttEngine( source=src, sample_rate=16000 )
                 self.stt.load()
 
+    def _th_loop(self):
+        try:
+            self.stt.start()
+            while self._status != VoiceTalkEngine.ST_STOPPED:
+                try:
+                    stt_data:SttData = self.stt.get_ctl( timeout=0.1 )
+                    q1=True
+                    if stt_data.typ == SttData.Dump:
+                        print( f"[DUMP] {stt_data}")
+                except Empty:
+                    q1=False
+
+                try:
+                    stt_data:SttData = self.stt.get_data( timeout=0.1 )
+                    q2=True
+                    print( f"[OUT] {stt_data}")
+                    if stt_data.typ == SttData.Text or stt_data.typ == SttData.Term:
+                        self._fn_stt_callback( stt_data )
+                except Empty:
+                    q2=False
+
+                if self.stt.is_alive():
+                    continue
+                else:
+                    break
+
+        except:
+            traceback.print_exc()
+            pass
+        finally:
+            self.stt.stop()
+            self.stt.join()
+
     def start(self, *, stt=True):
         self._status = VoiceTalkEngine.ST_LISTEN
         if stt and self.stt is not None:
-            self.stt.start()
+            self.th:Thread = Thread( target=self._th_loop, daemon=True )
+            self.th.start()
 
     def stop(self):
         self._status = VoiceTalkEngine.ST_STOPPED
-        if self.stt is not None:
-            self.stt.stop()
+        if self.th is not None:
+            self.th.join
     
     def tick_time(self, time_sec:float):
         self.tts.tick_time(time_sec)

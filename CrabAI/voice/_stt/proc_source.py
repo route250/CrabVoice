@@ -3,6 +3,7 @@ import platform
 from logging import getLogger
 import time
 import numpy as np
+import pandas as pd
 from threading import Thread
 from multiprocessing.queues import Queue
 from queue import Empty
@@ -178,6 +179,9 @@ class SourceBase:
             raw = audio[:,0]
         #print(f"_mic_callback {raw.shape} {raw.dtype}")
         stt_data:SttData = SttData( SttData.Audio, utc, 0, 0, sample_rate=self.orig_sr, raw=raw, seq=self.seq)
+        if mute:
+            mute_array:np.ndarray = np.ones(10, dtype=np.float32)
+            stt_data.hists = pd.DataFrame( {'mute': mute_array })
         self.data_out.put( stt_data )
         self.seq+=1
 
@@ -196,6 +200,8 @@ class SourceBase:
     def stop_source(self):
         raise NotImplementedError()
 
+    def set_mute(self,b:bool):
+        pass
 
 class MicSource(SourceBase):
 
@@ -245,6 +251,10 @@ class MicSource(SourceBase):
             self.audioinput.close()
         finally:
             self.audioinput = None
+
+    def set_mute(self,b:bool):
+        if isinstance(b,bool):
+            self.mute = b
 
 class ThreadSourceBase(SourceBase):
     def __init__(self, data_out:Queue, ctl_out:Queue, *, source, sampling_rate:int ):

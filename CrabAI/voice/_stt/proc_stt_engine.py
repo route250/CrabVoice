@@ -60,45 +60,12 @@ class SttEngine:
     def load(self):
         pass
     
-    def _th_loop(self, callback):
-
-        if callback is None:
-            return
-
-        while True:
-            try:
-                stt_data:SttData = self.get_ctl( timeout=0.1 )
-                q1=True
-                if stt_data.typ == SttData.Dump:
-                    print( f"[DUMP] {stt_data}")
-            except Empty:
-                q1=False
-
-            try:
-                stt_data:SttData = self.get_data( timeout=0.1 )
-                q2=True
-                print( f"[OUT] {stt_data}")
-                if stt_data.typ == SttData.Text:
-                    callback( stt_data )
-            except Empty:
-                q2=False
-
-            if self.SttEngine.is_alive():
-                continue
-            else:
-                break
-
-
-    def start(self, callback=None):
+    def start(self):
         self.prc4.start()
         self.prc3.start()
         self.prc2.start()
         self.prc1.start()
         self.src.start()
-
-        if callback is not None:
-            self.th:Thread = Thread( target=self._th_loop, args=(callback,), daemon=True )
-            self.th.start()
 
     def stop(self):
         self.src.stop()
@@ -133,3 +100,9 @@ class SttEngine:
         stt_data:SttData = self.ctl_out.get( timeout=0.1 )
         return stt_data
 
+    def tick_time(self, time_sec:float ):
+        pass
+
+    def set_pause(self, b:bool ):
+        if isinstance(self.src,MicSource):
+            self.src.set_mute(b)

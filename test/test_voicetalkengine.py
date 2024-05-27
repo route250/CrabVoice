@@ -14,7 +14,7 @@ logger = logging.getLogger('ClabAI.voice')
 # sys.path.append('/home/maeda/LLM')
 sys.path.append(os.getcwd())
 # sys.path.append('/home/maeda/LLM/MiyaSaburo/MiyaSaburo')
-from CrabAI.voice import VoiceTalkEngine
+from CrabAI.voice.proc_voice_talk_engine import VoiceTalkEngine
 from CrabAI.tools import JsonStreamParser, JsonStreamParseError
 from prompt_factory import PromptFactory, setup_openai_api
    

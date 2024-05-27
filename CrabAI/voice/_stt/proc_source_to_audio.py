@@ -41,7 +41,7 @@ class SourceToAudio(VFunction):
         super().__init__(proc_no,num_proc,data_in,data_out,ctl_out)
         self.state:int = 0
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
-
+        self.segsize:int = 0
         # for filter
         self.filt_mute:bool = True
         self.filt_utc:float = 0
@@ -110,6 +110,8 @@ class SourceToAudio(VFunction):
                 raw = stt_data.raw
                 # print(f"audio proc {raw.shape} {raw.dtype}")
                 mute = False
+                if stt_data.hists is not None:
+                    mute = True
                 orig_sr = stt_data.sample_rate
                 if orig_sr is None:
                     print(f"ERROR: can not open mic")
@@ -124,11 +126,11 @@ class SourceToAudio(VFunction):
                     self.proc_audio_filter( -1, np.zeros(self.segsize, dtype=np.float32), True, orig_sr )
                 self.proc_audio_filter( utc, raw, mute, orig_sr )
             else:
-                if ev.typ == Ev.EndOfData:
+                if self.state!=0 and ev.typ == Ev.EndOfData:
                     self.proc_audio_filter( -2, np.zeros(self.segsize, dtype=np.float32), True, self.orig_sr )
                     self.state=0
         except:
-            logger.excption("proc")
+            logger.exception("proc")
 
     def _input_seg_size(self, orig_sr:int ) -> int:
         segsize = int( self.sample_rate * ( orig_sr/self.sample_rate ) * 0.1 )
