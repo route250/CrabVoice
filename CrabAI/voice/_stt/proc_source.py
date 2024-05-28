@@ -210,6 +210,7 @@ class MicSource(SourceBase):
         self.mic_sampling_rate = int(mic_sampling_rate) if isinstance(mic_sampling_rate,(int,float)) and mic_sampling_rate>self.sampling_rate else self.sampling_rate
         self.utc:float = time.time()
         self.mute:bool = False
+        self.before_mute:bool = False
 
     def load_source(self):
         if self.source is not None:
@@ -232,7 +233,9 @@ class MicSource(SourceBase):
 
     def _mic_callback(self, data:np.ndarray, a,b,c ):
         xdata = data[:,0].copy()
-        self._put_data( self.utc, xdata, self.mute )
+        mute:bool = self.mute or self.before_mute
+        self._put_data( self.utc, xdata, mute )
+        self.before_mute = self.mute
 
     def start_source(self):
         try:

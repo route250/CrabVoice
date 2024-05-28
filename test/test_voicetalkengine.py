@@ -287,7 +287,7 @@ def main():
             request_messages.append( {'role':'user','content':text})
             messages.append( {'role':'user','content':text})
 
-            openai_timeout:Timeout = Timeout(15.0, connect=10.0, write=10.0, read=20.0)
+            openai_timeout:Timeout = Timeout(180.0, connect=2.0)
             openai_max_retries=3
             completions_cnt=3
             net_count=openai_max_retries

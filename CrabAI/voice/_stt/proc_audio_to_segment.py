@@ -127,6 +127,8 @@ class AudioToSegment(VFunction):
         self.last_utc:float = 0
         self.dump_last_fr:int = 0
         self.dump_interval_sec:float = 30.0
+        # ログ用
+        self.mute:int=0
 
     def load(self):
         pass
@@ -182,13 +184,25 @@ class AudioToSegment(VFunction):
 
             is_speech:float = vad_ave
 
-            if mute:
-                self.rec=NON_VOICE
-                self.rec_start = 0
+            if self.mute <=0:
+                if mute:
+                    self.mute=5
+                    print("### MUTE TRUE ###")
+                    self.rec=NON_VOICE
+                    self.rec_start = 0
+                    self.rec_end = 0
+                    self.pos=[0]*len(self.pos)
+                    self.ignore_list.clear()
+                    self.last_down.clear()
+            else:
+                if not mute and is_speech<self.dn_trig:
+                    self.mute -= 1
+                    if self.mute<=0:
+                        print("### MUTE FALSE ###")
 
             end_pos = self.seg_buffer.get_pos()
 
-            if self.rec==-1:
+            if self.rec==-1 or self.mute>0:
                 pass
 
             elif self.rec==POST_VOICE:
