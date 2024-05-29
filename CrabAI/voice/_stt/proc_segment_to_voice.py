@@ -3,14 +3,12 @@ import platform
 from logging import getLogger
 import numpy as np
 from multiprocessing import Queue
-from queue import Empty
 
 from logging import getLogger
 logger = getLogger(__name__)
 
 import time
 import json
-from heapq import heapify, heappop, heappush
 
 import numpy as np
 from scipy import signal
@@ -37,7 +35,6 @@ class SegmentToVoice(VFunction):
 
         self._state:int = 0
         self.vad_vosk = _X_VOSK
-        self._mute:bool = False # ミュートする
         self._var3:float = 0.45
         self.vosk_gr: KaldiRecognizer = None
         self.vosk_recog: KaldiRecognizer = None
@@ -46,10 +43,6 @@ class SegmentToVoice(VFunction):
         self.vosk_grammar:str = None
         self.vosk_max_len:int = int(self.sample_rate*1.7)
         # 
-        self.input_count:int = 0
-        self.output_count:int = 0
-        self.output_queue:list = []
-        heapify(self.output_queue)
         # 人の声のフィルタリング（バンドパスフィルタ）
         # fs_nyq = self.sample_rate*0.5
         # low = 200 / fs_nyq
@@ -92,7 +85,6 @@ class SegmentToVoice(VFunction):
 
     def to_dict(self):
         ret = {}
-        ret['mute']=self._mute
         ret['var3']=self._var3
         ret['vad.vosk']=self.vad_vosk
         return ret

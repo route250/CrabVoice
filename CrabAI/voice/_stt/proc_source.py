@@ -139,6 +139,7 @@ class SourceBase:
         self.orig_sr:int = 0
         self.seq:int = 0
         self.end_of_data:bool = False
+        self.mute_sw:int = 0
 
     def load(self):
         if self.state == SourceBase.StInit:
@@ -172,16 +173,18 @@ class SourceBase:
         except:
             pass
 
-    def _put_data(self, utc:float, audio:np.ndarray, mute:bool ):
+    def _put_data(self, utc:float, audio:np.ndarray ):
         #print(f"_mic_callback {data.shape} {data.dtype}")
         raw:np.ndarray = audio
         if len(audio.shape)>1:
             raw = audio[:,0]
         #print(f"_mic_callback {raw.shape} {raw.dtype}")
         stt_data:SttData = SttData( SttData.Audio, utc, 0, 0, sample_rate=self.orig_sr, raw=raw, seq=self.seq)
-        if mute:
+        if self.mute_sw>0:
             mute_array:np.ndarray = np.ones(10, dtype=np.float32)
             stt_data.hists = pd.DataFrame( {'mute': mute_array })
+            if self.mute_sw<999:
+                self.mute_sw-=1
         self.data_out.put( stt_data )
         self.seq+=1
 
@@ -201,7 +204,10 @@ class SourceBase:
         raise NotImplementedError()
 
     def set_mute(self,b:bool):
-        pass
+        if b:
+            self.mute_sw = 999
+        else:
+            self.mute_sw = 50
 
 class MicSource(SourceBase):
 
@@ -209,8 +215,6 @@ class MicSource(SourceBase):
         super().__init__( data_out, ctl_out, source=source, sampling_rate=sampling_rate )
         self.mic_sampling_rate = int(mic_sampling_rate) if isinstance(mic_sampling_rate,(int,float)) and mic_sampling_rate>self.sampling_rate else self.sampling_rate
         self.utc:float = time.time()
-        self.mute:bool = False
-        self.before_mute:bool = False
 
     def load_source(self):
         if self.source is not None:
@@ -233,9 +237,7 @@ class MicSource(SourceBase):
 
     def _mic_callback(self, data:np.ndarray, a,b,c ):
         xdata = data[:,0].copy()
-        mute:bool = self.mute or self.before_mute
-        self._put_data( self.utc, xdata, mute )
-        self.before_mute = self.mute
+        self._put_data( self.utc, xdata )
 
     def start_source(self):
         try:
@@ -254,10 +256,6 @@ class MicSource(SourceBase):
             self.audioinput.close()
         finally:
             self.audioinput = None
-
-    def set_mute(self,b:bool):
-        if isinstance(b,bool):
-            self.mute = b
 
 class ThreadSourceBase(SourceBase):
     def __init__(self, data_out:Queue, ctl_out:Queue, *, source, sampling_rate:int ):
@@ -306,7 +304,6 @@ class WavSource(ThreadSourceBase):
                 start_time = time.time()
                 pos = 0
                 audio_time:float = 0.0
-                mute:bool = False
                 while self.state == SourceBase.StStarted:
                     x = stream.readframes(segsize)
                     if x is None or len(x)==0:
@@ -322,7 +319,7 @@ class WavSource(ThreadSourceBase):
                         wa = (start_time + audio_time) - time.time()
                         if wa>0:
                             time.sleep( wa )
-                    self._put_data( utc, audio_f32, mute )
+                    self._put_data( utc, audio_f32 )
                     pos += len(pcm)
                 print( f"wave {audio_time:.2f}/{total_time:.2f} {pos}/{total_length}")
                 self._put_end_of_data()
@@ -353,7 +350,6 @@ class SttSource(ThreadSourceBase):
                 log_inverval = orig_sr * 5
                 log_next = 0
                 start_time = time.time()
-                mute:bool = False
                 for pos in range( 0, total_length, segsize ):
                     if not self.proc_ctl():
                         break
@@ -366,7 +362,7 @@ class SttSource(ThreadSourceBase):
                         wa = (start_time+audio_time) - time.time()
                         if wa>0.0:
                             time.sleep( wa )
-                    self._put_data( utc, audio_f32, mute )
+                    self._put_data( utc, audio_f32 )
                 print( f"SttData {audio_time:.2f}/{total_time:.2f} {pos}/{total_length}")
                 self._put_end_of_data()
         except:
@@ -403,7 +399,6 @@ class DbgSource(ThreadSourceBase):
                 log_inverval = orig_sr * 5
                 log_next = 0
                 start_time = time.time()
-                mute:bool = False
                 for pos in range( 0, total_length, segsize ):
                     audio_f32 = pad_to_length( audio[pos:pos+segsize], segsize )
                     audio_time = pos/orig_sr
@@ -414,7 +409,7 @@ class DbgSource(ThreadSourceBase):
                         wa = (start_time+audio_time) - time.time()
                         if wa>0.0:
                             time.sleep( wa )
-                    self._put_data( utc, audio_f32, mute )
+                    self._put_data( utc, audio_f32 )
                 self._put_end_of_data()
         except:
             logger.exception(f"filename:{self.source_file_path}")

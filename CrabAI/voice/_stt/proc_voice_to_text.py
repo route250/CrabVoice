@@ -3,7 +3,6 @@ import platform
 from logging import getLogger
 import numpy as np
 from multiprocessing import Queue
-from queue import Empty
 import time
 from urllib.error import URLError, HTTPError
 from logging import getLogger
