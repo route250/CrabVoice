@@ -207,7 +207,7 @@ class SourceBase:
         if b:
             self.mute_sw = 999
         else:
-            self.mute_sw = 50
+            self.mute_sw = 10
 
 class MicSource(SourceBase):
 

@@ -218,8 +218,8 @@ class VoiceTalkEngine:
         else:
             logger.info( f"[TTS] stop")
             self._status = VoiceTalkEngine.ST_LISTEN
-            self.stt.set_pause( False )
             self._fn_callback( VoiceTalkEngine.ST_TALK_END, talk_text=None )
+            self.stt.set_pause( False )
 
     def add_talk(self, text ):
         self.stt.set_pause( True )
