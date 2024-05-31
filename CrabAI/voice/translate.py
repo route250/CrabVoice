@@ -15,7 +15,7 @@ def _convert_to_katakana_openai(word_list, *, openai_timeout=5.0, openai_max_ret
     openai_max_retries: OpenAI APIの最大リトライ回数
     """
     # OpenAIに送るリクエストの作成
-    req = '以下の英単語をカタカナに変換して\n\n' + "\n".join(word_list)
+    req = '以下の英単語の発音をカタカナに変換して\n\n' + "\n".join(word_list)
     req += "\n\nJSON: { '英単語':'カタカナ',... }"
     request_messages = [
         {'role':'system', 'content':req }

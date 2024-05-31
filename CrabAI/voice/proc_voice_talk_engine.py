@@ -222,5 +222,7 @@ class VoiceTalkEngine:
             self.stt.set_pause( False )
 
     def add_talk(self, text ):
-        self.stt.set_pause( True )
-        self.tts.add_talk( text )
+        if self.stt is not None:
+            self.stt.set_pause( True )
+        if self.tts is not None:
+            self.tts.add_talk( text )

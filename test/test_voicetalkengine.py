@@ -203,10 +203,6 @@ response_fmt = [
     }, },
 ]
 
-class TalkException(Exception):
-    def __init__(self,*args):
-        super().__init__(*args)
-
 def main():
     from datetime import datetime
 
@@ -259,6 +255,10 @@ def main():
 
     pf:PromptFactory = PromptFactory( prompt_dict, response_fmt )
 
+    null_fix_talk = [ "えーと〜", "うーんん、", "そうだな〜〜", "ぴよぴよ〜"]
+    null_fix_prompt= [ '水平思考で考えよう', '会話を続けて下さい', '何も返事がなかったからやり直しです', 'なにか話そう']
+    null_fix_templ = [ 0.1, 0.3, 0.7, 0.7 ]
+
     messages = []
     last_talk_seg = 0
     last_talk:str = ""
@@ -287,16 +287,18 @@ def main():
             request_messages.append( {'role':'user','content':text})
             messages.append( {'role':'user','content':text})
 
-            openai_timeout:Timeout = Timeout(180.0, connect=2.0)
+            null_part_limit:int = 10
+            openai_timeout:Timeout = Timeout(180.0, connect=2.0, read=5.0)
             openai_max_retries=3
             completions_cnt=3
             net_count=openai_max_retries
-            while completions_cnt>0 and net_count>0:
+            null_count:int = 0
+            while completions_cnt>0 and net_count>0 and null_count<len(null_fix_templ):
                 try:
                     client:OpenAI = OpenAI(timeout=openai_timeout,max_retries=1)
                     stream = client.chat.completions.create(
                             messages=request_messages,
-                            model=openai_llm_model, max_tokens=1000, temperature=0.7,
+                            model=openai_llm_model, max_tokens=1000, temperature=null_fix_templ[null_count],
                             stream=True, response_format={"type":"json_object"}
                     )
                     talk_buffer = ""
@@ -305,8 +307,14 @@ def main():
                     result_dict=None
                     before_talk_text = ""
                     parser:JsonStreamParser = JsonStreamParser()
+                    null_part_count:int = 0
                     for part in stream:
                         delta_response = part.choices[0].delta.content or ""
+                        if len(assistant_response.strip())==0 and len(delta_response.strip(" "))==0:
+                            null_part_count+=1
+                            if null_part_count>=null_part_limit:
+                                print(f"[BREAK]")
+                                break
                         assistant_response+=delta_response
                         # JSONパース
                         try:
@@ -339,23 +347,28 @@ def main():
                             if seg in talk2_split:
                                 # logger.info( f"{seg} : {talk_buffer}")
                                 if last_talk.startswith(assistant_content):
-                                    raise TalkException()
+                                    assistant_content=""
+                                    talk_buffer=""
+                                    null_part_count=null_part_limit
+                                    print(f"[SAME]")
+                                    break
                                 speech.add_talk(talk_buffer)
                                 talk_buffer = ""
                     if talk_buffer:
                         speech.add_talk(talk_buffer)
+
                     if len(assistant_content)>0:
                         completions_cnt=0
+                    elif null_part_count>=null_part_limit:
+                        text = null_fix_talk[null_count]
+                        speech.add_talk(text)
+                        request_messages.append( {'role':'system','content':null_fix_prompt[null_count]})
+                        completions_cnt-=1
+                        null_count+=1
                     else:
                         speech.tts.play_error2()
-                        text = "えーっと、"
-                        speech.add_talk(text)
-                        request_messages.append( {'role':'system','content':'斜め上の視点で解答してみて'})
-                        completions_cnt-=1
-                except TalkException:
-                    text = "そうだね〜"
-                    speech.add_talk(text)
-                    request_messages.append( {'role':'system','content':'すこし視点を変えて解答してみよう'})
+                        completions_cnt=0
+
                 except (TimeoutException,openai.APITimeoutError,openai.APIConnectionError) as ex:
                     logger.error(f"[OpenAI] {ex.__class__.__name__}  {ex}")
                     speech.tts.play_error2()

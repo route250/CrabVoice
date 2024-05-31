@@ -1,7 +1,8 @@
 import sys,os,traceback,json,re
 from threading import Thread, Condition, ThreadError
 from concurrent.futures import ThreadPoolExecutor, Future
-from queue import Queue, Empty
+from multiprocessing import Queue
+from queue import Empty
 import time
 import numpy as np
 import requests
@@ -391,11 +392,17 @@ class TtsEngine:
         self._disable_openai = time.time()
         return None,None
 
-    def _text_to_audio( self, text: str, emotion:int = 0 ) -> bytes:
-        if TtsEngine.EOT==text:
+    @staticmethod
+    def convert_blank( text:str ) ->str:
+        text = re.sub( r'[「」・、。]+',' ',text)
+        return text.strip()
+
+    def _text_to_audio( self, text1: str, emotion:int = 0 ) -> bytes:
+        if TtsEngine.EOT==text1:
             return self.sound_listen_out,''
         wave: bytes = None
         model:str = None
+        text:str = TtsEngine.convert_blank( text1 )
         if 0<=self.speaker and self.speaker<1000:
             wave, model = self._text_to_audio_by_voicevox( text, emotion )
         if 1000<=self.speaker and self.speaker<2000:
