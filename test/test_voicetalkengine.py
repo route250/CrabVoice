@@ -255,8 +255,8 @@ def main():
 
     pf:PromptFactory = PromptFactory( prompt_dict, response_fmt )
 
-    null_fix_talk = [ "えーと〜", "うーんん、", "そうだな〜〜", "ぴよぴよ〜"]
-    null_fix_prompt= [ '水平思考で考えよう', '会話を続けて下さい', '何も返事がなかったからやり直しです', 'なにか話そう']
+    null_fix_talk = [ "えーと〜", "うー", "そうだな〜〜", "ぴよぴよ〜"]
+    null_fix_prompt= [ 'ユーザの言葉は解らない時は、ユーザに質問すること', 'ユーザの言葉に返答して下さい','会話を続けて下さい', '何も返事がなかったからやり直しです']
     null_fix_templ = [ 0.1, 0.3, 0.7, 0.7 ]
 
     messages = []
