@@ -203,6 +203,11 @@ response_fmt = [
     }, },
 ]
 
+def get_dict_value( data:dict, key:str, default:float ):
+    if isinstance(data,dict) and isinstance(data.get(key),float):
+        return data[key]
+    return default
+
 def main():
     from datetime import datetime
 
@@ -255,9 +260,70 @@ def main():
 
     pf:PromptFactory = PromptFactory( prompt_dict, response_fmt )
 
-    null_fix_talk = [ "えーと〜", "うー", "そうだな〜〜", "ぴよぴよ〜"]
-    null_fix_prompt= [ 'ユーザの言葉は解らない時は、ユーザに質問すること', 'ユーザの言葉に返答して下さい','会話を続けて下さい', '何も返事がなかったからやり直しです']
-    null_fix_templ = [ 0.1, 0.3, 0.7, 0.7 ]
+
+    #presence_penalty
+    # -2.0 から 2.0 の間の数値、または、None。デフォルトは0.0
+    # 正の値は、新しいトークンがこれまでにテキストに現れたかどうかに基づいてペナルティを課し、モデルが新しいトピックについて話す可能性を高める。
+
+    #frequency_penalty
+    # -2.0 から 2.0 の間の数値、または、None。デフォルトは0.0
+    # 正の値は、新しいトークンに、これまでのテキストにおける既存の頻度に基づいてペナルティを与え、モデルが同じ行を逐語的に繰り返す可能性を低下させる。    null_fix_data = [
+
+    null_fix_data = [
+        {
+            'talk':'えっと〜',
+            'temperature': 0.3,
+            'presence_penalty':1.0,
+            'messages': (
+                {'role':'system','content':'ユーザの言葉は解らない時は、ユーザに質問すること'},
+            ),
+        },
+        {
+            'talk':'う〜ん',
+            'temperature': 0.7,
+            'presence_penalty':1.0,
+            'messages': (
+                {'role':'system','content':'ユーザの言葉に返答して下さい'},
+            ),
+        },
+        {
+            'talk':'そうだな〜',
+            'temperature': 0.7,
+            'presence_penalty':1.0,
+            'messages': (
+                {'role':'system','content':'何も返事がなかったからやり直しです'},
+            ),
+        },
+    ]
+    same_fix_data = [
+        {
+            'talk':'えっと〜',
+            'temperature': 0.3,
+            'presence_penalty':1.0,
+            'frequency_penalty': 2.0,
+            'messages': (
+                {'role':'system','content':'ユーザの言葉は解らない時は、ユーザに質問すること'},
+            ),
+        },
+        {
+            'talk':'う〜ん',
+            'temperature': 0.7,
+            'presence_penalty':1.0,
+            'frequency_penalty': 2.0,
+            'messages': (
+                {'role':'system','content':'ユーザの言葉に返答して下さい'},
+            ),
+        },
+        {
+            'talk':'そうだな〜',
+            'temperature': 0.7,
+            'presence_penalty':1.0,
+            'frequency_penalty': 2.0,
+            'messages': (
+                {'role':'system','content':'何も返事がなかったからやり直しです'},
+            ),
+        },
+    ]
 
     messages = []
     last_talk_seg = 0
@@ -290,15 +356,20 @@ def main():
             null_part_limit:int = 10
             openai_timeout:Timeout = Timeout(180.0, connect=2.0, read=5.0)
             openai_max_retries=3
-            completions_cnt=3
             net_count=openai_max_retries
             null_count:int = 0
-            while completions_cnt>0 and net_count>0 and null_count<len(null_fix_templ):
+            same_count:int = 0
+            temperature:float = 0.1
+            presence_penalty:float = 0.5
+            frequency_penalty:float = 0.0
+            fix_data:dict = None
+            while net_count>0 and null_count<=len(null_fix_data) and same_count<=len(same_fix_data):
                 try:
                     client:OpenAI = OpenAI(timeout=openai_timeout,max_retries=1)
                     stream = client.chat.completions.create(
                             messages=request_messages,
-                            model=openai_llm_model, max_tokens=1000, temperature=null_fix_templ[null_count],
+                            model=openai_llm_model, max_tokens=1000,
+                            temperature=temperature, presence_penalty=presence_penalty, frequency_penalty=frequency_penalty,
                             stream=True, response_format={"type":"json_object"}
                     )
                     talk_buffer = ""
@@ -313,7 +384,9 @@ def main():
                         if len(assistant_response.strip())==0 and len(delta_response.strip(" "))==0:
                             null_part_count+=1
                             if null_part_count>=null_part_limit:
-                                print(f"[BREAK]")
+                                print(f"[BREAK] null {null_count}")
+                                fix_data = null_fix_data[null_count] if null_count<len(null_fix_data) else None
+                                null_count+=1
                                 break
                         assistant_response+=delta_response
                         # JSONパース
@@ -349,8 +422,9 @@ def main():
                                 if last_talk.startswith(assistant_content):
                                     assistant_content=""
                                     talk_buffer=""
-                                    null_part_count=null_part_limit
-                                    print(f"[SAME]")
+                                    print(f"[BREAK] same {same_count}")
+                                    fix_data = same_fix_data[same_count] if same_count<len(same_fix_data) else None
+                                    same_count+=1
                                     break
                                 speech.add_talk(talk_buffer)
                                 talk_buffer = ""
@@ -358,16 +432,18 @@ def main():
                         speech.add_talk(talk_buffer)
 
                     if len(assistant_content)>0:
-                        completions_cnt=0
-                    elif null_part_count>=null_part_limit:
-                        text = null_fix_talk[null_count]
+                        net_count=0
+                    elif isinstance(fix_data,dict):
+                        text = fix_data['talk']
                         speech.add_talk(text)
-                        request_messages.append( {'role':'system','content':null_fix_prompt[null_count]})
-                        completions_cnt-=1
-                        null_count+=1
+                        for m in fix_data['messages']:
+                            request_messages.append( m )
+                        temperature = get_dict_value( fix_data,'temperature',temperature )
+                        presence_penalty = get_dict_value( fix_data,'presence_penalty',presence_penalty )
+                        frequency_penalty = get_dict_value( fix_data,'frequency_penalty',frequency_penalty )
                     else:
                         speech.tts.play_error2()
-                        completions_cnt=0
+                        net_count=0
 
                 except (TimeoutException,openai.APITimeoutError,openai.APIConnectionError) as ex:
                     logger.error(f"[OpenAI] {ex.__class__.__name__}  {ex}")
@@ -389,17 +465,14 @@ def main():
                     logger.error(f"[OpenAI] {ex.__class__.__name__} {ex.status_code} {ex.message}")
                     speech.tts.play_error2()
                     net_count = 0
-                    completions_cnt = 0
                 except (HTTPError,openai.APIError) as ex:
                     logger.error(f"[OpenAI] {ex.__class__.__name__} {ex}")
                     speech.tts.play_error2()
                     net_count = 0
-                    completions_cnt = 0
                 except:
                     logger.exception('[OpenAI]')
                     speech.tts.play_error2()
                     net_count = 0
-                    completions_cnt = 0
             if len(assistant_content)==0:
                 logger.error(f"[LLM] no response?? {result_dict}")
             speech.add_talk(VoiceTalkEngine.EOT)
