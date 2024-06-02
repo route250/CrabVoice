@@ -5,11 +5,7 @@ from queue import Empty
 
 import numpy as np
 
-#from ..stt import RecognizerGoogle, VoiceSplitter, SttEngine
-from .stt import SttData
-from CrabAI.voice._stt.proc_source import get_mic_devices
-from CrabAI.voice._stt.proc_stt_engine import SttEngine
-
+from .stt import SttEngine, SttData, get_mic_devices
 from .tts import TtsEngine
 
 import logging
