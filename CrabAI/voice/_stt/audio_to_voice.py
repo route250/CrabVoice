@@ -91,7 +91,7 @@ class AudioToVoice:
         elif 'vad.vosk'==key:
             return self.vad_vosk
         elif 'save_path'==key:
-            return self._var3
+            return self.save_path
         return self.audio_to_segment[key]
 
     def to_dict(self)->dict:

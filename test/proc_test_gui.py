@@ -198,7 +198,7 @@ class Application(tk.Tk):
             print(f"ロードできません: {file_path}")
 
     def load_file(self):
-        filename = filedialog.askopenfilename(filetypes=[("Stt files","*"),("WAV files", "*.wav"),("all files", "*")])
+        filename = filedialog.askopenfilename(filetypes=[("Stt files","*.npz"),("WAV files", "*.wav"),("all files", "*")])
         if filename:
             self._th_load_from_directory(filename)
 

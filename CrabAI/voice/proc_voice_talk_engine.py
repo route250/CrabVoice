@@ -1,5 +1,5 @@
 import sys,os,traceback
-import time
+import time, datetime
 from threading import Thread, Condition
 from queue import Empty
 
@@ -36,8 +36,11 @@ class VoiceTalkEngine:
         self.th:Thread = None
         self.stt:SttEngine = None
         self.tts:TtsEngine = TtsEngine( speaker=speaker, talk_callback=self._tts_callback)
+        self.save_path:str = None
 
     def __getitem__(self,key):
+        if key=="save_path":
+            return self.save_path
         if self.stt is not None:
             val = self.stt[key]
             if val is not None:
@@ -52,9 +55,14 @@ class VoiceTalkEngine:
         ret = self.stt.to_dict() if self.stt is not None else {}
         if self.tts is not None:
             ret.update( self.tts.to_dict() )
+        keys = ['save_path']
+        for key in keys:
+            ret[key] = self[key]
         return ret
 
     def __setitem__(self,key,val):
+        if key=="save_path":
+            self.save_path = val
         if self.stt is not None:
             self.stt[key]=val
         if self.tts is not None:
@@ -105,7 +113,7 @@ class VoiceTalkEngine:
                     stt_data:SttData = self.stt.get_ctl( timeout=0.1 )
                     q1=True
                     if stt_data.typ == SttData.Dump:
-                        print( f"[DUMP] {stt_data}")
+                        self._save_audio(stt_data)
                 except Empty:
                     q1=False
 
@@ -226,3 +234,20 @@ class VoiceTalkEngine:
             self.stt.set_pause( True )
         if self.tts is not None:
             self.tts.add_talk( text )
+
+    def _save_audio(self,stt_data:SttData):
+        try:
+            if self.save_path is not None and os.path.isdir(self.save_path):
+                max_vad = max(stt_data['vad'])
+                if max_vad>0.2:
+                    print( f"[DUMP] {stt_data}")
+                    dt = datetime.datetime.now()
+                    dir = os.path.join( self.save_path, dt.strftime("%Y%m%d") )
+                    os.makedirs(dir,exist_ok=True)
+                    filename = dt.strftime("audio_%Y%m%d_%H%M%S")
+                    file_path = os.path.join( dir, filename )
+                    stt_data.save(file_path)
+                else:
+                    print( f"[dump] {stt_data}")                    
+        except:
+            logger.exception("can not save data")
