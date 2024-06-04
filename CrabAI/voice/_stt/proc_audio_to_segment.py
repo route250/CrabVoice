@@ -263,7 +263,7 @@ class AudioToSegment(VFunction):
                     self.rec_max = self.max_speech_length
 
             elif self.rec==VPULSE or self.rec==TPULSE:
-                seg_len = end_pos - self.pos_SEGSTART
+                seg_len = end_pos - self.rec_start
                 if seg_len>=self.ignore_length or is_speech>=self.up_trig:
                     # 音声開始処理をするとこ
                     tmpbuf = self.seg_buffer.to_numpy( -seg_len )
@@ -273,7 +273,7 @@ class AudioToSegment(VFunction):
                         # FFTでも人の声っぽいのでセグメントとして認定
                         logger.debug( f"[REC] segment start voice/audio {var}" )
                         self.rec = PRE_VOICE
-                        seg_start = self.pos_SEGSTART
+                        seg_start = self.rec_start
                         self.rec_start = seg_start
                         # 直全のパルスをマージする
                         merge_length = int(self.sample_rate*0.4)
@@ -309,7 +309,6 @@ class AudioToSegment(VFunction):
                     self.rec = VPULSE if self.rec==POST_VPULSE else TPULSE
                     self.rec_start = current_pos
                     self.ignore_list.add(current_pos)
-                    self.pos_SEGSTART = current_pos
                 else:
                     seg_len = end_pos - self.rec_start
                     if seg_len>=self.ignore_length:
@@ -330,7 +329,6 @@ class AudioToSegment(VFunction):
                     self.rec=TPULSE
                     self.rec_start = current_pos
                     self.ignore_list.add(current_pos)
-                    self.pos_SEGSTART = current_pos
             else:
                 #NON_VOICE
                 if is_speech>=self.pick_trig:
@@ -338,7 +336,6 @@ class AudioToSegment(VFunction):
                     self.rec=VPULSE
                     self.rec_start = current_pos
                     self.ignore_list.add(current_pos)
-                    self.pos_SEGSTART = current_pos
                 else:
                     slope0 = self.hists.get_vad_slope(hists_idx-1)
                     slope1 = self.hists.get_vad_slope(hists_idx)
