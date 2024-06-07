@@ -14,7 +14,7 @@ import pygame
 
 import sys,os
 sys.path.append(os.getcwd())
-from CrabAI.voice._stt.audio_to_text import AudioToText, SttData
+from CrabAI.voice import SttData
 from CrabAI.voice.voice_utils import audio_to_wave_bytes
 from stt_data_plot import SttDataTable, SttDataPlotter
 from CrabAI.vmp import Ev
@@ -123,8 +123,8 @@ class Application(tk.Tk):
         self.gstop_entry = ttk.Entry(self.button_frame,width=4)
         self.gstop_entry.pack(side=tk.LEFT, padx=5)
 
-        stt:AudioToText = AudioToText(callback=None)
-        fpass, fstop, gpass, gstop = stt['vad.butter']
+        #stt:AudioToText = AudioToText(callback=None)
+        fpass, fstop, gpass, gstop = SttEngine.get_defult_audio_butter()
         self._set_butter( fpass, fstop, gpass, gstop )
 
         # 実行ボタン
@@ -248,19 +248,12 @@ class Application(tk.Tk):
         print("[TEST003] Loop")
         while True:
             try:
-                stt_data:SttData = self.SttEngine.get_ctl( timeout=0.1 )
-                q1=True
-                if stt_data.typ == SttData.Dump:
-                    print( f"[DUMP] {stt_data}")
-                    self.update_result( stt_data )
-            except Empty:
-                q1=False
-
-            try:
                 stt_data:SttData = self.SttEngine.get_data( timeout=0.1 )
                 q2=True
                 print( f"[OUT] {stt_data}")
-                if stt_data.typ == SttData.Text:
+                if stt_data.typ == SttData.Dump:
+                    self.update_result( stt_data )
+                elif stt_data.typ == SttData.Text:
                     self.update_result( stt_data )
             except Empty:
                 q2=False

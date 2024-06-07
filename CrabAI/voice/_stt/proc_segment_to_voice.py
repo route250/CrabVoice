@@ -28,20 +28,20 @@ from ..voice_utils import voice_per_audio_rate
 
 class SegmentToVoice(VFunction):
     DEFAULT_BUTTER = [ 100, 10, 10, 90 ] # fpass, fstop, gpass, gstop
-    def __init__(self, proc_no:int, num_proc:int, data_in:Queue, data_out:Queue, ctl_out:Queue, *, sample_rate:int=None ):
-        super().__init__(proc_no,num_proc,data_in,data_out,ctl_out)
+    def __init__(self, proc_no:int, num_proc:int, share, data_in:Queue, data_out:Queue, *, sample_rate:int=None ):
+        super().__init__(proc_no,num_proc,share,data_in,data_out)
         self.state:int = 0
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
 
         self._state:int = 0
         self.vad_vosk = _X_VOSK
-        self._var3:float = 0.45
+        self._var3:float = self.conf.set_voice_var(0.45,notify=False)
         self.vosk_gr: KaldiRecognizer = None
         self.vosk_recog: KaldiRecognizer = None
         self.vosk_model: vosk.Model = None
         self.vosk_spk: vosk.SpkModel = None
         self.vosk_grammar:str = None
-        self.vosk_max_len:int = int(self.sample_rate*1.7)
+        self.vosk_max_len:int = int( self.conf.set_voice_max_sec(1.7,notify=False) * self.sample_rate )
         # 
         # 人の声のフィルタリング（バンドパスフィルタ）
         # fs_nyq = self.sample_rate*0.5
@@ -49,7 +49,7 @@ class SegmentToVoice(VFunction):
         # high = 1000 /fs_nyq
         # self.pass_ba = scipy.signal.butter( 2, [low, high], 'bandpass', output='ba')
         # self.cut_ba = scipy.signal.butter( 2, [low, high], 'bandstop', output='ba')
-        self._butter = SegmentToVoice.DEFAULT_BUTTER
+        self._butter = self.conf.set_butter2( SegmentToVoice.DEFAULT_BUTTER, notify=False )
         self.sos = None
         self._update_butter()
         self.ignore_list = [ None, '', 'ん' ]
@@ -71,23 +71,6 @@ class SegmentToVoice(VFunction):
         #y = signal.filtfilt(self.b, self.a, x) #信号に対してフィルタをかける
         y:np.ndarray = signal.sosfiltfilt( self.sos, x ) #信号に対してフィルタをかける
         return y.astype(np.float32)
-
-    def configure(self,key,val):
-        if 'mute'==key:
-            if isinstance(val,(bool)):
-                self.set_pause(val)
-        elif 'var3'==key:
-            if isinstance(val,(int,float)) and 0<=val<=1:
-                self._var3 = float(val)
-        elif 'vad.vosk'==key:
-            if isinstance(val,(bool)):
-                self.vad_vosk=val
-
-    def to_dict(self):
-        ret = {}
-        ret['var3']=self._var3
-        ret['vad.vosk']=self.vad_vosk
-        return ret
 
     def load(self):
         if self.vad_vosk:
@@ -113,6 +96,14 @@ class SegmentToVoice(VFunction):
             if self.vosk_spk is not None:
                 recog.SetSpkModel( self.vosk_spk )
             self.vosk_recog = recog
+
+    def reload_share_param(self):
+        butter = self.conf.get_butter2()
+        if isinstance(butter,list) and len(butter)==len(self._butter) and butter != self._butter:
+            self._butter = butter
+            self._update_butter()
+        self._var3 = self.conf.get_voice_var()
+        self.vosk_max_len = int( self.conf.get_voice_max_sec() * self.sample_rate )
 
     def proc(self, ev ):
         if isinstance(ev,SttData):

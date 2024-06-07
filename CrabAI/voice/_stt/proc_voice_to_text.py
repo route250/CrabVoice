@@ -13,13 +13,16 @@ from .stt_data import SttData
 from .recognizer_google import RecognizerGoogle
 
 class VoiceToText(VFunction):
-    def __init__(self, proc_no:int, num_proc:int, data_in:Queue, data_out:Queue, ctl_out:Queue ):
-        super().__init__(proc_no,num_proc,data_in,data_out,ctl_out)
+    def __init__(self, proc_no:int, num_proc:int, share, data_in:Queue, data_out:Queue ):
+        super().__init__(proc_no,num_proc,share,data_in,data_out)
         self.model='google'
         self.speech_state=0
 
     def load(self):
         pass
+
+    def reload_share_param(self):
+        return
 
     def proc(self, ev ):
         if isinstance(ev,SttData):

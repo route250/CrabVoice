@@ -3,13 +3,13 @@ import platform
 from logging import getLogger
 import time
 import numpy as np
-from multiprocessing.queues import Queue
+from multiprocessing.queues import Queue as PQ
 import wave
 import sounddevice as sd
 import librosa
 from scipy import signal
 
-from CrabAI.vmp import Ev, VFunction, VProcess
+from CrabAI.vmp import Ev, ShareParam, VFunction, VProcess
 from .stt_data import SttData
 from .ring_buffer import RingBuffer
 from .hists import AudioFeatureBuffer
@@ -76,21 +76,22 @@ POST_TPULSE=5
 
 class AudioToSegment(VFunction):
 
-    def __init__(self, proc_no:int, num_proc:int, data_in:Queue, data_out:Queue, ctl_out:Queue, *, sample_rate:int ):
+    def __init__(self, proc_no:int, num_proc:int, share, data_in:PQ, data_out:PQ, ctl_out:PQ, *, sample_rate:int ):
 
-        super().__init__(proc_no,num_proc,data_in,data_out,ctl_out)
+        super().__init__(proc_no,num_proc,share,data_in,data_out)
+        self.ctl_out:PQ = ctl_out
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
 
-        self.pick_trig:float = 0.4
-        self.up_trig:float = 0.5
-        self.dn_trig:float = 0.45
-        self.ignore_length:int = int( 0.1 * self.sample_rate ) # 発言とみなす最低時間
-        self.min_speech_length:int = int( 0.4 * self.sample_rate )
-        self.max_speech_length:int = int( 4.0 * self.sample_rate )
-        self.post_speech_length:int = int( 0.2 * self.sample_rate ) 
-        self.max_silent_length:int = int( 0.8 * self.sample_rate )  # 発言終了とする無音時間
+        self.pick_trig:float = self.conf.set_vad_pick(0.4, notify=False )
+        self.up_trig:float = self.conf.set_vad_up(0.5, notify=False )
+        self.dn_trig:float = self.conf.set_vad_dn(0.45, notify=False )
+        self.ignore_length:int = int( self.conf.set_vad_ignore_sec(0.1, notify=False ) * self.sample_rate ) # 発言とみなす最低時間
+        self.min_speech_length:int = int( self.conf.set_vad_min_sec(0.4, notify=False ) * self.sample_rate )
+        self.max_speech_length:int = int( self.conf.set_vad_max_sec(4.0, notify=False ) * self.sample_rate )
+        self.post_speech_length:int = int( self.conf.set_vad_post_sec(0.2, notify=False ) * self.sample_rate ) 
+        self.max_silent_length:int = int( self.conf.set_vad_silent_sec(0.8, notify=False ) * self.sample_rate )  # 発言終了とする無音時間
+        self.var1 = self.conf.set_vad_var( 0.3, notify=False ) # 発言とみなすFFTレート
         self.prefech_length:int = int( 1.6 * self.sample_rate ) # 発言の途中で先行通知する時間
-        self.var1 = 0.3 # 発言とみなすFFTレート
 
         # dump
         self.last_utc:float = 0
@@ -129,6 +130,17 @@ class AudioToSegment(VFunction):
 
     def load(self):
         pass
+
+    def reload_share_param(self):
+        self.pick_trig = self.conf.get_vad_pick()
+        self.up_trig = self.conf.get_vad_up()
+        self.dn_trig = self.conf.get_vad_dn()
+        self.ignore_length = int( self.conf.set_vad_ignore_sec() * self.sample_rate ) # 発言とみなす最低時間
+        self.min_speech_length = int( self.conf.get_vad_min_sec() * self.sample_rate )
+        self.max_speech_length = int( self.conf.get_vad_max_sec() * self.sample_rate )
+        self.post_speech_length = int( self.conf.get_vad_post_sec() * self.sample_rate ) 
+        self.max_silent_length = int( self.conf.get_vad_silent_sec() * self.sample_rate )  # 発言終了とする無音時間
+        self.var1 = self.conf.get_vad_var()
 
     def proc(self,ev:Ev):
         if isinstance(ev,SttData):
@@ -346,6 +358,7 @@ class AudioToSegment(VFunction):
 
             self.hists.set_color( hists_idx, self.rec )
             self.proc_output_dump(utc,False)
+            self.conf.set_aux( self.rec, vad, energy, zc, self.mute )
 
     def proc_end_of_data(self):
         utc = self.last_utc
@@ -399,6 +412,12 @@ class AudioToSegment(VFunction):
         e = self.hists.to_index( end_fr )
         stt_data.hists = self.hists.to_df( b, e )
         return stt_data
+
+    def output_ctl(self, ev:Ev):
+        if isinstance(self.ctl_out,PQ):
+            ev.proc_no=self.proc_no
+            ev.num_proc=self.num_proc
+            self.ctl_out.put(ev)
 
     def proc_output_dump(self,utc:float,flush:bool):
         try:

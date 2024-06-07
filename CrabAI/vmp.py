@@ -2,7 +2,8 @@ import sys,os
 import time
 from logging import getLogger
 import traceback
-from multiprocessing import Process
+import multiprocessing as mp
+from multiprocessing import Process, Array
 from multiprocessing.queues import Queue as PQ
 from heapq import heapify, heappop, heappush
 from queue import Empty
@@ -76,9 +77,149 @@ class Ev:
             return self.typ if self.typ is not None else None
         raise KeyError(f'Key {key} not found')
 
+IDX_SEQ = 0
+IDX_STAT_MAIN = 1
+
+IDX_VAD_PICK = 10
+IDX_VAD_UP = 11
+IDX_VAD_DN = 12
+IDX_VAD_IGNORE_SEC = 13
+IDX_VAD_MIN_SEC = 14
+IDX_VAD_MAX_SEC = 15
+IDX_VAD_POST_SEC = 16
+IDX_VAD_SILENT_SEC = 17
+IDX_VAD_VAR = 18
+
+IDX_VOICE_VAR = 20
+IDX_VOICE_MAX_SEC = 21
+IDX_VAR2 = 61
+
+IDX_AUX = 70
+IDX_BUTTER1 = 80
+IDX_BUTTER2 = 90
+
+class ShareParam:
+
+    def __init__(self, share ):
+        self._share_array = share
+        self._share_key = share[0]
+
+    def _set_value(self, idx, value, *, notify=True ) ->float:
+        if isinstance(value,(float,int)):
+            value = float(value)
+            if self._share_array[idx] != value:
+                self._share_array[idx] = value
+                if notify:
+                    self._share_array[0] = self._share_array[0] + 1.0
+            return value
+        return None
+
+    def _set_list(self, idx, sz, values, *, notify=True ):
+        if not isinstance(values,list) or len(values)!=sz:
+            return None
+        for v in values:
+            if not isinstance(v,(float,int)):
+                return None
+        update = False
+        for i,v in enumerate(values):
+            v = float(v)
+            if v != self._share_array[idx+i]:
+                self._share_array[idx+i] = v
+                update = True
+        if notify and update:
+            self._share_array[0] = self._share_array[0] + 1.0
+        return tuple( v for v in self._share_array[idx:idx+sz])
+
+    def _get_value(self, idx ):
+        self._share_key = self._share_array[0]
+        return self._share_array[idx]
+
+    def _get_list(self, idx, sz ):
+        self._share_key = self._share_array[0]
+        return tuple( v for v in self._share_array[idx:idx+sz])
+
+    def is_updated(self):
+        return self._share_key != self._share_array[0]
+    
+    def set_stat_main(self, value ):
+        return self._set_value( IDX_STAT_MAIN, value )
+    def get_stat_main(self ):
+        return self._get_value( IDX_STAT_MAIN )
+
+    def set_vad_pick(self, value, *, notify=True ):
+        return self._set_value( IDX_VAD_PICK, value, notify=notify )
+    def get_vad_pick(self ):
+        return self._get_value( IDX_VAD_PICK )
+
+    def set_vad_up(self, value, *, notify=True ):
+        return self._set_value( IDX_VAD_UP, value, notify=notify )
+    def get_vad_up(self ):
+        return self._get_value( IDX_VAD_UP )
+
+    def set_vad_dn(self, value, *, notify=True ):
+        return self._set_value( IDX_VAD_DN, value, notify=notify )
+    def get_vad_dn(self ):
+        return self._get_value( IDX_VAD_DN )
+
+    def set_vad_ignore_sec(self, value, *, notify=True  ):
+        return self._set_value( IDX_VAD_IGNORE_SEC, value, notify=notify )
+    def get_vad_ignore_sec(self ):
+        return self._get_value( IDX_VAD_IGNORE_SEC )
+
+    def set_vad_min_sec(self, value, *, notify=True  ):
+        return self._set_value( IDX_VAD_MIN_SEC, value, notify=notify )
+    def get_vad_min_sec(self ):
+        return self._get_value( IDX_VAD_MIN_SEC )
+
+    def set_vad_max_sec(self, value, *, notify=True  ):
+        return self._set_value( IDX_VAD_MAX_SEC, value, notify=notify )
+    def get_vad_max_sec(self ):
+        return self._get_value( IDX_VAD_MAX_SEC )
+
+    def set_vad_post_sec(self, value, *, notify=True  ):
+        return self._set_value( IDX_VAD_POST_SEC, value, notify=notify )
+    def get_vad_post_sec(self ):
+        return self._get_value( IDX_VAD_POST_SEC )
+
+    def set_vad_silent_sec(self, value, *, notify=True  ):
+        return self._set_value( IDX_VAD_SILENT_SEC, value, notify=notify )
+    def get_vad_silent_sec(self ):
+        return self._get_value( IDX_VAD_SILENT_SEC )
+
+    def set_vad_var(self, value, *, notify=True  ):
+        return self._set_value( IDX_VAD_VAR, value, notify=notify )
+    def get_vad_var(self ):
+        return self._get_value( IDX_VAD_VAR)
+
+    def set_voice_var(self, value, *, notify=True  ):
+        return self._set_value( IDX_VOICE_VAR, value, notify=notify )
+    def get_voice_var(self ):
+        return self._get_value( IDX_VOICE_VAR)
+
+    def set_voice_max_sec(self, value, *, notify=True  ):
+        return self._set_value( IDX_VOICE_MAX_SEC, value, notify=notify )
+    def get_voice_max_sec(self ):
+        return self._get_value( IDX_VOICE_MAX_SEC)
+
+    def set_butter1(self, params, *, notify=True ):
+        return self._set_list( IDX_BUTTER1, 4, params, notify=notify)
+    def get_butter1(self):
+        return self._get_list( IDX_BUTTER1,4)
+
+    def set_butter2(self, params, *, notify=True  ):
+        return self._set_list( IDX_BUTTER2, 4, params, notify=notify)
+    def get_butter2(self):
+        return self._get_list( IDX_BUTTER2,4)
+
+    def set_aux(self, color, vad, en, zc, mute):
+        return self._set_list( IDX_AUX, 5, (color,vad,en,zc,mute), notify=False)
+    def get_aux(self):
+        return self._get_list( IDX_AUX,5)
+
 class VFunction:
 
-    def __init__(self, proc_no:int, num_proc:int, data_in:PQ, data_out:PQ, ctl_out:PQ ):
+    def __init__(self, proc_no:int, num_proc:int, share, data_in:PQ, data_out:PQ ):
+        self.conf:ShareParam = ShareParam(share)
         self.num_proc:int = num_proc if isinstance(num_proc,int) and num_proc>0 else 1
         self.proc_no:int = proc_no if isinstance(proc_no,int) and 0<=proc_no and proc_no<self.num_proc else 0
         self.proc_name:str = f"{self.__class__.__name__}#{self.proc_no}"
@@ -86,7 +227,6 @@ class VFunction:
         self.enable_in = True
         self.data_in:PQ = data_in
         self.data_out:PQ = data_out
-        self.ctl_out:PQ = ctl_out
         self.seq_count:int = 0
         self.req_brake:bool = False
         #
@@ -95,6 +235,7 @@ class VFunction:
         heapify(self.input_queue)
 
     def debug(self,msg,*args,**kwargs):
+        print(f"[{self.proc_name}] {msg}")
         self._logger.debug( f"[{self.proc_name}]{msg}",*args,**kwargs)
 
     def info(self,*args,**kwargs):
@@ -103,15 +244,8 @@ class VFunction:
     def error(self,*args,**kwargs):
         self._logger.error(*args,**kwargs)
 
-    def _event_configure(self,ev:Ev):
-        if isinstance(ev.kwargs,dict):
-            for key,val in ev.kwargs.items():
-                self.configure(key,val)
-        if isinstance(self.ctl_out,PQ):
-            ret = self.to_dict()
-            if not isinstance(ret,dict):
-                ret = {}
-            self.ctl_out.put( Ev( ev.seq, ev.typ, **ret) )
+    def reload_share_param(self):
+        return
 
     def be_distribution(self, ev:Ev ):
         if ev is None or self.num_proc<=1:
@@ -210,14 +344,19 @@ class VFunction:
             try:
                 ev:Ev = self._get_next_data()
                 if ev is None:
+                    if self.conf.is_updated():
+                        if self.conf.get_stat_main() != 0.0:
+                            self.req_break = True
+                        else:
+                            self.reload_share_param()
                     continue
 
-                self.debug(f"Ev {ev}")
+                # self.debug(f"Ev {ev}")
                 if not isinstance(ev.typ,int):
                     ev.typ = Ev.Nop
                 try:
                     if ev.typ == Ev.Config:
-                        self._event_configure(ev)
+                        self.reload_share_param()
                     else:
                         self.proc(ev)
                 except:
@@ -273,18 +412,6 @@ class VFunction:
             ev.num_proc=self.num_proc
             self.data_out.put(ev)
 
-    def output_ctl(self, ev:Ev):
-        if isinstance(self.ctl_out,PQ):
-            ev.proc_no=self.proc_no
-            ev.num_proc=self.num_proc
-            self.ctl_out.put(ev)
-
-    def configure(self,key,val):
-        return
-
-    def to_dict(self):
-        return {}
-
     def load(self ):
         raise NotImplementedError()
 
@@ -302,7 +429,8 @@ class VProcess(Process):
     def _dummy():
         pass
 
-    def __init__(self, cls:type[VFunction], proc_no:int, num_proc:int, data_in:PQ, data_out:PQ, ctl_out:PQ, *args, **kwargs ):
+    def __init__(self, cls:type[VFunction], proc_no:int, num_proc:int, share, data_in:PQ, data_out:PQ, *args, **kwargs ):
+        self.share = share
         self.num_proc:int = num_proc if isinstance(num_proc,int) and num_proc>0 else 1
         self.proc_no:int = proc_no if isinstance(proc_no,int) and 0<=proc_no and proc_no<self.num_proc else 0
         self.proc_name:str = f"{self.__class__.__name__}#{self.proc_no}"
@@ -312,24 +440,20 @@ class VProcess(Process):
         self.num_proc:int = num_proc
         self.data_in:PQ = data_in
         self.data_out:PQ = data_out
-        self.ctl_out:PQ = ctl_out
         self.args = args
         self.kwargs = kwargs
         self.__config_seq:int = 0
 
     def run(self):
-        instance = self.cls( self.proc_no, self.num_proc, self.data_in, self.data_out, self.ctl_out,  *self.args, **self.kwargs )
+        instance = self.cls( self.proc_no, self.num_proc, self.share, self.data_in, self.data_out, *self.args, **self.kwargs )
         instance._event_start()
-
-    def _configure(self, **kwargs ):
-        ev = Ev(  self.__config_seq, Ev.Config, **kwargs )
-        self.data_in.put( ev )
 
 class VProcessGrp:
 
-    def __init__(self, cls:type[VFunction], num_proc:int, data_in:PQ, data_out:PQ, ctl_out:PQ, *args, **kwargs ):
-
-        self.proc_list:list = [ VProcess( cls, i, num_proc, data_in, data_out, ctl_out, *args, **kwargs) for i in range(num_proc) ]
+    def __init__(self, cls:type[VFunction], num_proc:int, share, data_in:PQ, data_out:PQ, *args, **kwargs ):
+        self.share = share
+        self.cls:type[VFunction] = cls
+        self.proc_list:list[VProcess] = [ VProcess( cls, i, num_proc, self.share, data_in, data_out, *args, **kwargs) for i in range(num_proc) ]
 
     def start(self):
         for proc in self.proc_list:
@@ -345,44 +469,55 @@ class VProcessGrp:
         for proc in self.proc_list:
             proc.join()
 
-
 class PipeA(VFunction):
 
+    def load(self):
+        pass
+
+    def reload_share_param(self):
+        value = self.conf.get_vad_up()
+        self.debug( f"reload vad_up={value}")
+
     def proc(self, ev ):
-        if ev.cmd == Ev.Audio and len(ev.args)>0:
-            audio:np.ndarray = ev.args[0]
-            # print(f"[{self.__class__.__name__}] {ev.seq} {ev.cmd} {audio.shape} {audio.dtype}")
-            audio2 = audio + 0.1
-            self.dbg_output( Ev.Audio, audio2 )
+        self.debug( f"{str(ev)}")
 
 class PipeB(VFunction):
+
+    def load(self):
+        pass
+
+    def reload_share_param(self):
+        value = self.conf.get_vad_dn()
+        self.debug( f"reload vad_dn={value}")
+
     def proc(self, ev ):
-        if ev.cmd == Ev.Audio and len(ev.args)>0:
-            audio:np.ndarray = ev.args[0]
-            # print(f"[{self.__class__.__name__}] {ev.seq} {ev.cmd} {audio.shape} {audio.dtype}")
-            audio2 = audio + 0.1
-            self.dbg_output( Ev.Audio, audio2 )
+        self.debug( f"{str(ev)}")
 
 class PipeC(VFunction):
+
+    def load(self):
+        pass
+
+    def reload_share_param(self):
+        value = self.conf.get_vad_min_sec()
+        self.debug( f"reload vad_min_sec={value}")
+
     def proc(self, ev ):
-        if ev.cmd == Ev.Audio and len(ev.args)>0:
-            audio:np.ndarray = ev.args[0]
-            # print(f"[{self.__class__.__name__}] {ev.seq} {ev.cmd} {audio.shape} {audio.dtype}")
-            audio2 = audio + 0.1
-            self.dbg_output( Ev.Audio, audio2 )
+        self.debug( f"{str(ev)}")
 
 def main():
 
-    c1:PQ = PQ()
+    share = Array( 'd', 256 )
+    conf:ShareParam = ShareParam(share)
 
     q1:PQ = PQ()
     q2:PQ = PQ()
     q3:PQ = PQ()
     q4:PQ = PQ()
 
-    pa = VProcess( PipeA, c1, q1, q2 )
-    pb = VProcess( PipeB, c1, q2, q3 )
-    pc = VProcess( PipeC, c1, q3, q4 )
+    pa = VProcess( PipeA, share, q1, q2 )
+    pb = VProcess( PipeB, share, q2, q3 )
+    pc = VProcess( PipeC, share, q3, q4 )
 
     print(f"Start")
     pa.start()
@@ -421,5 +556,42 @@ def main():
     elaps = te-ts
     print( f"Time: {elaps:.2f}")
 
+def config_test():
+
+    share = Array( 'd', 256 )
+    conf:ShareParam = ShareParam(share)
+
+    q1:PQ = mp.Queue()
+    q2:PQ = mp.Queue()
+    q3:PQ = mp.Queue()
+
+    pa = VProcessGrp( PipeA, 1, share, q1, q2 )
+    pb = VProcessGrp( PipeB, 1, share, q2, q3 )
+
+    print(f"Start")
+    pa.start()
+    pb.start()
+    time.sleep(3.0)
+
+    print("### set_vad_up(0.1)")
+    conf.set_vad_up( 0.1 )
+    time.sleep(1.0)
+    print("### set_vad_dn(0.1)")
+    conf.set_vad_dn( 0.1 )
+    time.sleep(1.0)
+    print("### set_vad_up(0.2)")
+    conf.set_vad_up( 0.2 )
+    print("### set_vad_dn(0.2)")
+    conf.set_vad_dn( 0.2 )
+    time.sleep(1.0)
+
+    seq = 0
+    ev = Ev(seq, Ev.EndOfData )
+    q1.put(ev)
+    print(f"pa.join")
+    pa.join()
+    print(f"pb.join")
+    pb.join()
+
 if __name__ == "__main__":
-    main()
+    config_test()

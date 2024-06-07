@@ -106,18 +106,12 @@ class VoiceTalkEngine:
             self.stt.start()
             while self._status != VoiceTalkEngine.ST_STOPPED:
                 try:
-                    stt_data:SttData = self.stt.get_ctl( timeout=0.1 )
-                    q1=True
-                    if stt_data.typ == SttData.Dump:
-                        self._save_audio(stt_data)
-                except Empty:
-                    q1=False
-
-                try:
                     stt_data:SttData = self.stt.get_data( timeout=0.1 )
                     q2=True
                     print( f"[OUT] {stt_data}")
-                    if stt_data.typ == SttData.Text or stt_data.typ == SttData.Term:
+                    if stt_data.typ == SttData.Dump:
+                        self._save_audio(stt_data)
+                    elif stt_data.typ == SttData.Text or stt_data.typ == SttData.Term:
                         self._fn_stt_callback( stt_data )
                 except Empty:
                     q2=False

@@ -81,11 +81,6 @@ def test003():
         if (time.time()-st)>180.0:
             blk.stop()
         try:
-            stt_data:SttData = blk.get_ctl( timeout=0.1 )
-            print( f"[CTL] {stt_data}")
-        except Empty:
-            pass
-        try:
             stt_data:SttData = blk.get_data( timeout=0.1 )
             print( f"[OUT] {stt_data}")
         except Empty:

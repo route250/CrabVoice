@@ -9,7 +9,7 @@ from tkinter import ttk, filedialog
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 sys.path.append(os.getcwd())
-from CrabAI.voice._stt.audio_to_text import SttData
+from CrabAI.voice import SttData
 from CrabAI.voice.voice_utils import audio_to_wave_bytes, audio_to_wave
 
 class SttDataPlotter(ttk.Frame):

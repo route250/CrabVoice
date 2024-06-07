@@ -5,10 +5,11 @@ import time
 import numpy as np
 from threading import Thread
 from multiprocessing import Queue as PQ
+from multiprocessing import Array
 from queue import Empty
 
 from CrabAI.voice._stt.stt_data import SttData
-from CrabAI.vmp import Ev, VFunction, VProcessGrp
+from CrabAI.vmp import Ev, ShareParam, VFunction, VProcessGrp
 from CrabAI.voice._stt.proc_source import MicSource, WavSource, SttSource, DbgSource
 from CrabAI.voice._stt.proc_source_to_audio import SourceToAudio, shrink
 from CrabAI.voice._stt.proc_audio_to_segment import AudioToSegment
@@ -27,22 +28,31 @@ def safe_join( t ):
     except:
         return False
 
-class SttEngine:
-    def __init__(self, source, *, sample_rate:int=16000, num_vosk:int=2 ):
-        self.sample_rate:int = sample_rate if isinstance(sample_rate,(int,float)) and sample_rate>16000 else 16000
+class SttEngine(ShareParam):
 
-        ctl_out = self.ctl_out = PQ()
+    @staticmethod
+    def get_defult_audio_butter():
+        return SourceToAudio.DEFAULT_BUTTER
+
+    @staticmethod
+    def get_defult_segment_butter():
+        return SegmentToVoice.DEFAULT_BUTTER
+
+    def __init__(self, source, *, sample_rate:int=16000, num_vosk:int=2 ):
+        super().__init__( Array('d', 256 ) )
+        self.sample_rate:int = sample_rate if isinstance(sample_rate,(int,float)) and sample_rate>16000 else 16000
+        dump_out = self.dump_out = PQ()
         data_in1 = self.data_in1 = PQ()
 
         if isinstance(source,str):
             if source.endswith('.wav'):
-                self.src = WavSource( data_in1, ctl_out, sampling_rate=self.sample_rate, source=source  )
+                self.src = WavSource( self._share_array, data_in1, sampling_rate=self.sample_rate, source=source  )
             elif source.endswith('.pyz'):
-                self.src = SttSource( data_in1, ctl_out, sampling_rate=self.sample_rate, source=source  )
+                self.src = SttSource( self._share_array, data_in1, sampling_rate=self.sample_rate, source=source  )
             else:
                 raise ValueError(f'invalid source: {source}')
         elif isinstance(source,int):
-            self.src = MicSource( data_in1, ctl_out, sampling_rate=self.sample_rate, source=source  )
+            self.src = MicSource( self._share_array, data_in1, sampling_rate=self.sample_rate, source=source  )
         else:
             raise ValueError(f'invalid source: {source}')
         
@@ -51,10 +61,10 @@ class SttEngine:
         data_in4 = self.data_in4 = PQ()
         data_out = self.data_out= PQ()
 
-        self.prc1 = VProcessGrp( SourceToAudio, 1, data_in1, data_in2, ctl_out, sample_rate=self.sample_rate )
-        self.prc2 = VProcessGrp( AudioToSegment, 1, data_in2, data_in3, ctl_out, sample_rate=self.sample_rate )
-        self.prc3 = VProcessGrp( SegmentToVoice, num_vosk, data_in3, data_in4, ctl_out )
-        self.prc4 = VProcessGrp( VoiceToText, 1, data_in4, data_out, ctl_out )
+        self.prc1 = VProcessGrp( SourceToAudio, 1, self._share_array, data_in1, data_in2, sample_rate=self.sample_rate )
+        self.prc2 = VProcessGrp( AudioToSegment, 1, self._share_array, data_in2, data_in3, dump_out, sample_rate=self.sample_rate )
+        self.prc3 = VProcessGrp( SegmentToVoice, num_vosk, self._share_array, data_in3, data_in4 )
+        self.prc4 = VProcessGrp( VoiceToText, 1, self._share_array, data_in4, data_out )
         self.th:Thread = None
 
     def load(self):
@@ -66,6 +76,13 @@ class SttEngine:
         self.prc2.start()
         self.prc1.start()
         self.src.start()
+
+    def configure(self, **kwargs):
+        e:Ev = Ev( 0, Ev.Config, **kwargs )
+        self.data_in1.put( e )
+        self.data_in2.put( e )
+        self.data_in3.put( e )
+        self.data_in4.put( e )
 
     def stop(self):
         self.src.stop()
@@ -93,11 +110,13 @@ class SttEngine:
         safe_join(self.th)
 
     def get_data(self, timeout:float=None ):
+        if not self.dump_out.empty():
+            try:
+                stt_data:SttData = self.dump_out.get_nowait()
+                return stt_data
+            except Empty:
+                pass
         stt_data:SttData = self.data_out.get( timeout=0.1 )
-        return stt_data
-
-    def get_ctl(self, timeout:float=None ):
-        stt_data:SttData = self.ctl_out.get( timeout=0.1 )
         return stt_data
 
     def tick_time(self, time_sec:float ):
