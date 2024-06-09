@@ -22,26 +22,34 @@ try:
 except:
     _X_VOSK:bool=False
 
-from CrabAI.vmp import Ev, VFunction, VProcess
+from CrabAI.vmp import Ev, ShareParam, VFunction, VProcess
 from .stt_data import SttData
 from ..voice_utils import voice_per_audio_rate
 
 class SegmentToVoice(VFunction):
-    DEFAULT_BUTTER = [ 100, 10, 10, 90 ] # fpass, fstop, gpass, gstop
-    def __init__(self, proc_no:int, num_proc:int, share, data_in:Queue, data_out:Queue, *, sample_rate:int=None ):
-        super().__init__(proc_no,num_proc,share,data_in,data_out)
+
+    DEFAULT_BUTTER = tuple( [100, 10, 10, 90] ) # fpass, fstop, gpass, gstop
+    @staticmethod
+    def load_default( conf:ShareParam ):
+        if isinstance(conf,ShareParam):
+            conf.set_voice_var( 0.45 )
+            conf.set_voice_max_sec( 1.7 )
+            conf.set_voice_butter( SegmentToVoice.DEFAULT_BUTTER )
+
+    def __init__(self, proc_no:int, num_proc:int, conf:ShareParam, data_in:Queue, data_out:Queue, *, sample_rate:int=None ):
+        super().__init__(proc_no,num_proc,conf,data_in,data_out)
         self.state:int = 0
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
 
         self._state:int = 0
         self.vad_vosk = _X_VOSK
-        self._var3:float = self.conf.set_voice_var(0.45,notify=False)
+        self._var3:float = None
         self.vosk_gr: KaldiRecognizer = None
         self.vosk_recog: KaldiRecognizer = None
         self.vosk_model: vosk.Model = None
         self.vosk_spk: vosk.SpkModel = None
         self.vosk_grammar:str = None
-        self.vosk_max_len:int = int( self.conf.set_voice_max_sec(1.7,notify=False) * self.sample_rate )
+        self.vosk_max_len:int = None
         # 
         # 人の声のフィルタリング（バンドパスフィルタ）
         # fs_nyq = self.sample_rate*0.5
@@ -49,9 +57,9 @@ class SegmentToVoice(VFunction):
         # high = 1000 /fs_nyq
         # self.pass_ba = scipy.signal.butter( 2, [low, high], 'bandpass', output='ba')
         # self.cut_ba = scipy.signal.butter( 2, [low, high], 'bandstop', output='ba')
-        self._butter = self.conf.set_butter2( SegmentToVoice.DEFAULT_BUTTER, notify=False )
+        self._butter = [ 0 for v in range(4) ]
         self.sos = None
-        self._update_butter()
+        self.reload_share_param()
         self.ignore_list = [ None, '', 'ん' ]
 
     def _update_butter(self):
@@ -98,7 +106,7 @@ class SegmentToVoice(VFunction):
             self.vosk_recog = recog
 
     def reload_share_param(self):
-        butter = self.conf.get_butter2()
+        butter = self.conf.get_voice_butter()
         if isinstance(butter,list) and len(butter)==len(self._butter) and butter != self._butter:
             self._butter = butter
             self._update_butter()

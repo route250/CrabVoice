@@ -76,22 +76,37 @@ POST_TPULSE=5
 
 class AudioToSegment(VFunction):
 
-    def __init__(self, proc_no:int, num_proc:int, share, data_in:PQ, data_out:PQ, ctl_out:PQ, *, sample_rate:int ):
+    @staticmethod
+    def load_default( conf:ShareParam ):
+        if isinstance(conf,ShareParam):
+            conf.set_vad_pick(0.4 )
+            conf.set_vad_up(0.5 )
+            conf.set_vad_dn(0.45 )
+            conf.set_vad_ignore_sec(0.1 )
+            conf.set_vad_min_sec(0.4 )
+            conf.set_vad_max_sec(4.0 )
+            conf.set_vad_post_sec(0.2 )
+            conf.set_vad_silent_sec(0.8 )
+            conf.set_vad_var( 0.3 )
+            conf.set_aux( 0, 0, 0, 0, 0 )
 
-        super().__init__(proc_no,num_proc,share,data_in,data_out)
+    def __init__(self, proc_no:int, num_proc:int, conf:ShareParam, data_in:PQ, data_out:PQ, ctl_out:PQ, *, sample_rate:int ):
+
+        super().__init__(proc_no,num_proc,conf,data_in,data_out)
         self.ctl_out:PQ = ctl_out
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
 
-        self.pick_trig:float = self.conf.set_vad_pick(0.4, notify=False )
-        self.up_trig:float = self.conf.set_vad_up(0.5, notify=False )
-        self.dn_trig:float = self.conf.set_vad_dn(0.45, notify=False )
-        self.ignore_length:int = int( self.conf.set_vad_ignore_sec(0.1, notify=False ) * self.sample_rate ) # 発言とみなす最低時間
-        self.min_speech_length:int = int( self.conf.set_vad_min_sec(0.4, notify=False ) * self.sample_rate )
-        self.max_speech_length:int = int( self.conf.set_vad_max_sec(4.0, notify=False ) * self.sample_rate )
-        self.post_speech_length:int = int( self.conf.set_vad_post_sec(0.2, notify=False ) * self.sample_rate ) 
-        self.max_silent_length:int = int( self.conf.set_vad_silent_sec(0.8, notify=False ) * self.sample_rate )  # 発言終了とする無音時間
-        self.var1 = self.conf.set_vad_var( 0.3, notify=False ) # 発言とみなすFFTレート
-        self.prefech_length:int = int( 1.6 * self.sample_rate ) # 発言の途中で先行通知する時間
+        self.pick_trig:float = None
+        self.up_trig:float = None
+        self.dn_trig:float = None
+        self.ignore_length:int = None
+        self.min_speech_length:int = None
+        self.max_speech_length:int = None
+        self.post_speech_length:int = None
+        self.max_silent_length:int = None
+        self.var1:float = None
+        self.prefech_length:int = None
+        self.reload_share_param()
 
         # dump
         self.last_utc:float = 0
@@ -135,11 +150,12 @@ class AudioToSegment(VFunction):
         self.pick_trig = self.conf.get_vad_pick()
         self.up_trig = self.conf.get_vad_up()
         self.dn_trig = self.conf.get_vad_dn()
-        self.ignore_length = int( self.conf.set_vad_ignore_sec() * self.sample_rate ) # 発言とみなす最低時間
+        self.ignore_length = int( self.conf.get_vad_ignore_sec() * self.sample_rate ) # 発言とみなす最低時間
         self.min_speech_length = int( self.conf.get_vad_min_sec() * self.sample_rate )
         self.max_speech_length = int( self.conf.get_vad_max_sec() * self.sample_rate )
         self.post_speech_length = int( self.conf.get_vad_post_sec() * self.sample_rate ) 
         self.max_silent_length = int( self.conf.get_vad_silent_sec() * self.sample_rate )  # 発言終了とする無音時間
+        self.prefech_length = int( 1.6 * self.sample_rate ) # 先行通知する時間
         self.var1 = self.conf.get_vad_var()
 
     def proc(self,ev:Ev):

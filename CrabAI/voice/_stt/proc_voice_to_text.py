@@ -8,13 +8,19 @@ from urllib.error import URLError, HTTPError
 from logging import getLogger
 logger = getLogger(__name__)
 
-from CrabAI.vmp import Ev, VFunction, VProcess
+from CrabAI.vmp import Ev, ShareParam, VFunction, VProcess
 from .stt_data import SttData
 from .recognizer_google import RecognizerGoogle
 
 class VoiceToText(VFunction):
-    def __init__(self, proc_no:int, num_proc:int, share, data_in:Queue, data_out:Queue ):
-        super().__init__(proc_no,num_proc,share,data_in,data_out)
+
+    @staticmethod
+    def load_default( conf:ShareParam ):
+        if isinstance(conf,ShareParam):
+            pass
+
+    def __init__(self, proc_no:int, num_proc:int, conf:ShareParam, data_in:Queue, data_out:Queue ):
+        super().__init__(proc_no,num_proc,conf,data_in,data_out)
         self.model='google'
         self.speech_state=0
 

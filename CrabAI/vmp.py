@@ -95,14 +95,17 @@ IDX_VOICE_MAX_SEC = 21
 IDX_VAR2 = 61
 
 IDX_AUX = 70
-IDX_BUTTER1 = 80
-IDX_BUTTER2 = 90
+IDX_AUDIO_BUTTER = 80
+IDX_VOICE_BUTTER = 90
 
 class ShareParam:
 
-    def __init__(self, share ):
-        self._share_array = share
-        self._share_key = share[0]
+    def __init__(self, conf=None ):
+        if isinstance( conf, ShareParam ):
+            self._share_array = conf._share_array
+        else:
+            self._share_array = Array( 'd', 256 )
+        self._share_key = self._share_array[0]
 
     def _set_value(self, idx, value, *, notify=True ) ->float:
         if isinstance(value,(float,int)):
@@ -115,7 +118,7 @@ class ShareParam:
         return None
 
     def _set_list(self, idx, sz, values, *, notify=True ):
-        if not isinstance(values,list) or len(values)!=sz:
+        if not isinstance(values,(list,tuple)) or len(values)!=sz:
             return None
         for v in values:
             if not isinstance(v,(float,int)):
@@ -201,15 +204,15 @@ class ShareParam:
     def get_voice_max_sec(self ):
         return self._get_value( IDX_VOICE_MAX_SEC)
 
-    def set_butter1(self, params, *, notify=True ):
-        return self._set_list( IDX_BUTTER1, 4, params, notify=notify)
-    def get_butter1(self):
-        return self._get_list( IDX_BUTTER1,4)
+    def set_audio_butter(self, params, *, notify=True ):
+        return self._set_list( IDX_AUDIO_BUTTER, 4, params, notify=notify)
+    def get_audio_butter(self):
+        return self._get_list( IDX_AUDIO_BUTTER,4)
 
-    def set_butter2(self, params, *, notify=True  ):
-        return self._set_list( IDX_BUTTER2, 4, params, notify=notify)
-    def get_butter2(self):
-        return self._get_list( IDX_BUTTER2,4)
+    def set_voice_butter(self, params, *, notify=True  ):
+        return self._set_list( IDX_VOICE_BUTTER, 4, params, notify=notify)
+    def get_voice_butter(self):
+        return self._get_list( IDX_VOICE_BUTTER,4)
 
     def set_aux(self, color, vad, en, zc, mute):
         return self._set_list( IDX_AUX, 5, (color,vad,en,zc,mute), notify=False)
@@ -218,8 +221,8 @@ class ShareParam:
 
 class VFunction:
 
-    def __init__(self, proc_no:int, num_proc:int, share, data_in:PQ, data_out:PQ ):
-        self.conf:ShareParam = ShareParam(share)
+    def __init__(self, proc_no:int, num_proc:int, conf:ShareParam, data_in:PQ, data_out:PQ ):
+        self.conf:ShareParam = ShareParam(conf)
         self.num_proc:int = num_proc if isinstance(num_proc,int) and num_proc>0 else 1
         self.proc_no:int = proc_no if isinstance(proc_no,int) and 0<=proc_no and proc_no<self.num_proc else 0
         self.proc_name:str = f"{self.__class__.__name__}#{self.proc_no}"

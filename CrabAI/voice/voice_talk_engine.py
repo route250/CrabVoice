@@ -7,11 +7,11 @@ import numpy as np
 
 from .stt import SttEngine, SttData, get_mic_devices
 from .tts import TtsEngine
-
+from CrabAI.vmp import ShareParam
 import logging
 logger = logging.getLogger(__name__)
 
-class VoiceTalkEngine:
+class VoiceTalkEngine(ShareParam):
     EOT:str = TtsEngine.EOT
     """
     音声会話のためのエンジン。マイクから音声認識と、音声合成を行う
@@ -22,7 +22,8 @@ class VoiceTalkEngine:
     ST_LISTEN:int = 20
     ST_LISTEN_END: int = 21
 
-    def __init__(self, *, speaker:int=46, record_samplerate:int=1600 ):
+    def __init__(self, *, conf:ShareParam=None, speaker:int=46, record_samplerate:int=1600 ):
+        super().__init__(conf)
         self._status = VoiceTalkEngine.ST_STOPPED
         self._callback = None
         self.text_lock:Condition = Condition()
@@ -30,6 +31,9 @@ class VoiceTalkEngine:
         self.text_confidence = 1.0
         self.text_stat=0
         self.th:Thread = None
+        if not isinstance(self.conf,ShareParam):
+            SttEngine.load_default(self)
+            TtsEngine.load_default(self)
         self.stt:SttEngine = None
         self.tts:TtsEngine = TtsEngine( speaker=speaker, talk_callback=self._tts_callback)
         self.save_path:str = None
@@ -98,7 +102,7 @@ class VoiceTalkEngine:
             mic_list = get_mic_devices(samplerate=16000, dtype=np.float32)
             if len(mic_list)>0:
                 src = mic_list[0]['index']
-                self.stt = SttEngine( source=src, sample_rate=16000 )
+                self.stt = SttEngine( conf=self, source=src, sample_rate=16000 )
                 self.stt.load()
 
     def _th_loop(self):

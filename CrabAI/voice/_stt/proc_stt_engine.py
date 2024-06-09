@@ -38,12 +38,20 @@ class SttEngine(ShareParam):
     def get_defult_segment_butter():
         return SegmentToVoice.DEFAULT_BUTTER
 
-    def __init__(self, source, *, sample_rate:int=16000, num_vosk:int=2 ):
-        super().__init__( Array('d', 256 ) )
+    @staticmethod
+    def load_default( conf:ShareParam ):
+        SourceToAudio.load_default( conf )
+        AudioToSegment.load_default( conf )
+        SegmentToVoice.load_default( conf )
+        VoiceToText.load_default( conf )
+
+    def __init__(self, source, *, conf:ShareParam=None, sample_rate:int=16000, num_vosk:int=2 ):
+        super().__init__( conf )
         self.sample_rate:int = sample_rate if isinstance(sample_rate,(int,float)) and sample_rate>16000 else 16000
         dump_out = self.dump_out = PQ()
         data_in1 = self.data_in1 = PQ()
-
+        if not isinstance(conf,ShareParam):
+            SttEngine.load_default(self)
         if isinstance(source,str):
             if source.endswith('.wav'):
                 self.src = WavSource( self._share_array, data_in1, sampling_rate=self.sample_rate, source=source  )

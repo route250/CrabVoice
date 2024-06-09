@@ -22,6 +22,7 @@ import librosa
 from ...net.net_utils import find_first_responsive_host
 from ..voice_utils import mml_to_audio, audio_to_wave_bytes, create_tone
 from ..translate import convert_to_katakana
+from CrabAI.vmp import ShareParam
 
 from logging import getLogger
 logger = getLogger(__name__)
@@ -76,6 +77,10 @@ class TtsEngine:
         voice = TtsEngine.id_to_model( idx )
         lang = voice[2]
         return lang if lang else 'ja_JP'
+
+    @staticmethod
+    def load_default( conf:ShareParam ):
+        pass
 
     def __init__(self, *, speaker=-1, submit_task = None, talk_callback = None, katakana_dir='tmp/katakana' ):
         # 並列処理用

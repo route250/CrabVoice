@@ -17,7 +17,7 @@ sys.path.append(os.getcwd())
 from CrabAI.voice import SttData
 from CrabAI.voice.voice_utils import audio_to_wave_bytes
 from stt_data_plot import SttDataTable, SttDataPlotter
-from CrabAI.vmp import Ev
+from CrabAI.vmp import Ev, ShareParam
 from CrabAI.voice._stt.proc_source import get_mic_devices
 from CrabAI.voice._stt.proc_stt_engine import SttEngine
 
@@ -70,6 +70,8 @@ BTN_STP="Stop"
 class Application(tk.Tk):
     def __init__(self):
         super().__init__()
+        self.conf:ShareParam = ShareParam()
+        SttEngine.load_default(self.conf)
         self.mic_list = None
         self.title('音声解析GUI')
         self.geometry('800x600')
@@ -124,7 +126,7 @@ class Application(tk.Tk):
         self.gstop_entry.pack(side=tk.LEFT, padx=5)
 
         #stt:AudioToText = AudioToText(callback=None)
-        fpass, fstop, gpass, gstop = SttEngine.get_defult_audio_butter()
+        fpass, fstop, gpass, gstop = self.conf.get_audio_butter()
         self._set_butter( fpass, fstop, gpass, gstop )
 
         # 実行ボタン

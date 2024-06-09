@@ -36,9 +36,14 @@ def shrink( data:np.ndarray, l:int ):
     return a
 
 class SourceToAudio(VFunction):
-    DEFAULT_BUTTER = [ 50, 10, 10, 90 ] # fpass, fstop, gpass, gstop
-    def __init__(self, proc_no:int, num_proc:int, share:ShareParam, data_in:Queue, data_out:Queue, sample_rate:int=None ):
-        super().__init__(proc_no,num_proc,share,data_in,data_out)
+    DEFAULT_BUTTER = tuple( [50, 10, 10, 90] ) # fpass, fstop, gpass, gstop
+    @staticmethod
+    def load_default( conf:ShareParam ):
+        if isinstance(conf,ShareParam):
+            conf.set_audio_butter(SourceToAudio.DEFAULT_BUTTER)
+
+    def __init__(self, proc_no:int, num_proc:int, conf:ShareParam, data_in:Queue, data_out:Queue, sample_rate:int=None ):
+        super().__init__(proc_no,num_proc,conf,data_in,data_out)
         self.state:int = 0
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
         self.segsize:int = 0
@@ -48,7 +53,7 @@ class SourceToAudio(VFunction):
         self.filt_buf:np.ndarray = np.zeros( 0, dtype=np.float32)
         self.fade_in_window = None
         self.fade_out_window = None
-        self._butter = self.conf.set_butter1(SourceToAudio.DEFAULT_BUTTER, notify=False)
+        self._butter = SourceToAudio.DEFAULT_BUTTER
         # for split
         # 音声データを処理するフレームサイズに分割する
         self.frame_msec:int = 10  # 10ms,20ms,30ms
@@ -74,6 +79,9 @@ class SourceToAudio(VFunction):
         # sos
         self.orig_sr:int = -1
         self.sos = None
+
+        #
+        self.reload_share_param()
 
     def _update_butter(self, orig_sr):
         if isinstance(orig_sr,int) and orig_sr>=16000 and self.sos is None or self.orig_sr != orig_sr:
@@ -103,7 +111,7 @@ class SourceToAudio(VFunction):
         self.silerovad.is_speech( np.zeros( self.frame_size, dtype=np.float32))
 
     def reload_share_param(self):
-        butter = self.conf.get_butter1()
+        butter = self.conf.get_audio_butter()
         if isinstance(butter,list) and len(butter)==len(self._butter) and butter != self._butter:
             self._butter = butter
             self._update_butter( self.orig_sr )
