@@ -10,6 +10,7 @@ logger = getLogger(__name__)
 
 from CrabAI.vmp import Ev, ShareParam, VFunction, VProcess
 from .stt_data import SttData
+from ..voice_utils import adjust_voice_gain
 from .recognizer_google import RecognizerGoogle
 
 class VoiceToText(VFunction):
@@ -17,17 +18,20 @@ class VoiceToText(VFunction):
     @staticmethod
     def load_default( conf:ShareParam ):
         if isinstance(conf,ShareParam):
-            pass
+            conf.set_text_gain( 0.8 )
 
     def __init__(self, proc_no:int, num_proc:int, conf:ShareParam, data_in:Queue, data_out:Queue ):
         super().__init__(proc_no,num_proc,conf,data_in,data_out)
         self.model='google'
         self.speech_state=0
+        self._gain:float = None
+        self.reload_share_param()
 
     def load(self):
         pass
 
     def reload_share_param(self):
+        self._gain = self.conf.get_text_gain()
         return
 
     def proc(self, ev ):
@@ -51,9 +55,7 @@ class VoiceToText(VFunction):
             next_typ = SttData.Text if SttData.Voice == stt_data.typ else SttData.PreText
             if len(audio)>0:
                 # 音量調整
-                peek = np.max(audio)
-                if peek<0.8:
-                    audio = audio * (0.8/peek)
+                audio = adjust_voice_gain( audio, self._gain )
                 t0 = time.time()
                 try:
                     text, confidence = RecognizerGoogle.recognize( audio, sample_rate=16000 )

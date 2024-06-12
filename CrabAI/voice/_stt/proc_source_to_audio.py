@@ -90,7 +90,6 @@ class SourceToAudio(VFunction):
             wp = fpass / fn  #ナイキスト周波数で通過域端周波数を正規化
             ws = fstop / fn  #ナイキスト周波数で阻止域端周波数を正規化
             N, Wn = signal.buttord(wp, ws, gpass, gstop)  #オーダーとバターワースの正規化周波数を計算
-            # self.b, self.a = signal.butter(N, Wn, "high")   #フィルタ伝達関数の分子と分母を計算
             self.sos = signal.butter(N, Wn, "high", output='sos')   #フィルタ伝達関数の分子と分母を計算
 
     def hipass(self,x):

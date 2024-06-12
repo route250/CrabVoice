@@ -24,16 +24,17 @@ except:
 
 from CrabAI.vmp import Ev, ShareParam, VFunction, VProcess
 from .stt_data import SttData
-from ..voice_utils import voice_per_audio_rate
+from ..voice_utils import voice_per_audio_rate, adjust_voice_gain
 
 class SegmentToVoice(VFunction):
 
-    DEFAULT_BUTTER = tuple( [100, 10, 10, 90] ) # fpass, fstop, gpass, gstop
+    DEFAULT_BUTTER = tuple( [ 10, 100, 7000, 8000, 90, 10] ) # fstop1, fpass1, fpass2, fstop2, gstop, gpass
     @staticmethod
     def load_default( conf:ShareParam ):
         if isinstance(conf,ShareParam):
             conf.set_voice_var( 0.45 )
-            conf.set_voice_max_sec( 1.7 )
+            conf.set_vosk_max_sec( 1.7 )
+            conf.set_voice_gain( 0.4 )
             conf.set_voice_butter( SegmentToVoice.DEFAULT_BUTTER )
 
     def __init__(self, proc_no:int, num_proc:int, conf:ShareParam, data_in:Queue, data_out:Queue, *, sample_rate:int=None ):
@@ -44,6 +45,7 @@ class SegmentToVoice(VFunction):
         self._state:int = 0
         self.vad_vosk = _X_VOSK
         self._var3:float = None
+        self._gain:float = None
         self.vosk_gr: KaldiRecognizer = None
         self.vosk_recog: KaldiRecognizer = None
         self.vosk_model: vosk.Model = None
@@ -63,18 +65,20 @@ class SegmentToVoice(VFunction):
         self.ignore_list = [ None, '', 'ん' ]
 
     def _update_butter(self):
-        fpass, fstop, gpass, gstop = self._butter
-        fpass2 = np.array([fpass,7000])
-        fstop2 = np.array([fstop,8000])
-        fn = self.sample_rate // 2   #ナイキスト周波数
-        wp = fpass2 / fn  #ナイキスト周波数で通過域端周波数を正規化
-        ws = fstop2 / fn  #ナイキスト周波数で阻止域端周波数を正規化
-        N, Wn = signal.buttord(wp, ws, gpass, gstop)  #オーダーとバターワースの正規化周波数を計算
-        # self.b, self.a = signal.butter(N, Wn, "high")   #フィルタ伝達関数の分子と分母を計算
-        self.sos = signal.butter(N, Wn, "band", output='sos')   #フィルタ伝達関数の分子と分母を計算
+        try:
+            fstop1, fpass1, fpass2, fstop2, gstop, gpass = self._butter
+            fpass = np.array([fpass1,fpass2])
+            fstop = np.array([fstop1,fstop2])
+            fn = self.sample_rate // 2   #ナイキスト周波数
+            wp = fpass / fn  #ナイキスト周波数で通過域端周波数を正規化
+            ws = fstop / fn  #ナイキスト周波数で阻止域端周波数を正規化
+            N, Wn = signal.buttord(wp, ws, gpass, gstop)  #オーダーとバターワースの正規化周波数を計算
+            self.sos = signal.butter(N, Wn, "band", output='sos')   #フィルタ伝達関数の分子と分母を計算
+        except:
+            self.sos = None
 
     def audio_filter(self,x):
-        if not isinstance(x,np.ndarray) or len(x)==0:
+        if not isinstance(x,np.ndarray) or len(x)==0 or self.sos is None:
             return x
         #y = signal.filtfilt(self.b, self.a, x) #信号に対してフィルタをかける
         y:np.ndarray = signal.sosfiltfilt( self.sos, x ) #信号に対してフィルタをかける
@@ -111,7 +115,8 @@ class SegmentToVoice(VFunction):
             self._butter = butter
             self._update_butter()
         self._var3 = self.conf.get_voice_var()
-        self.vosk_max_len = int( self.conf.get_voice_max_sec() * self.sample_rate )
+        self._gain = self.conf.get_voice_gain()
+        self.vosk_max_len = int( self.conf.get_vosk_max_sec() * self.sample_rate )
 
     def proc(self, ev ):
         if isinstance(ev,SttData):
@@ -146,9 +151,7 @@ class SegmentToVoice(VFunction):
 
             if Accept is None:
                 # 音量調整
-                peek = np.max(stt_audio)
-                if 0<peek and peek<0.4:
-                    stt_audio = stt_audio * (0.4/peek)
+                stt_audio = adjust_voice_gain( stt_audio, self._gain )
 
             if Accept is None and grammer:
                 try:

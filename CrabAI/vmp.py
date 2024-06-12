@@ -89,10 +89,14 @@ IDX_VAD_MAX_SEC = 15
 IDX_VAD_POST_SEC = 16
 IDX_VAD_SILENT_SEC = 17
 IDX_VAD_VAR = 18
+IDX_VAD_FADE_SEC=19
+IDX_VAD_PREFECH_SEC=20
 
-IDX_VOICE_VAR = 20
-IDX_VOICE_MAX_SEC = 21
-IDX_VAR2 = 61
+IDX_VOICE_VAR = 30
+IDX_VOSK_MAX_SEC = 31
+IDX_VOICE_NORMRIZE = 32
+
+IDX_TEXT_NORMRIZE = 42
 
 IDX_AUX = 70
 IDX_AUDIO_BUTTER = 80
@@ -194,15 +198,30 @@ class ShareParam:
     def get_vad_var(self ):
         return self._get_value( IDX_VAD_VAR)
 
+    def set_vad_fade_sec(self, value, *, notify=True  ):
+        return self._set_value( IDX_VAD_FADE_SEC, value, notify=notify )
+    def get_vad_fade_sec(self ):
+        return self._get_value( IDX_VAD_FADE_SEC)
+
+    def set_vad_prefech_sec(self, value, *, notify=True  ):
+        return self._set_value( IDX_VAD_PREFECH_SEC, value, notify=notify )
+    def get_vad_prefech_sec(self ):
+        return self._get_value( IDX_VAD_PREFECH_SEC)
+
     def set_voice_var(self, value, *, notify=True  ):
         return self._set_value( IDX_VOICE_VAR, value, notify=notify )
     def get_voice_var(self ):
         return self._get_value( IDX_VOICE_VAR)
 
-    def set_voice_max_sec(self, value, *, notify=True  ):
-        return self._set_value( IDX_VOICE_MAX_SEC, value, notify=notify )
-    def get_voice_max_sec(self ):
-        return self._get_value( IDX_VOICE_MAX_SEC)
+    def set_voice_gain(self, value, *, notify=True  ):
+        return self._set_value( IDX_VOICE_NORMRIZE, value, notify=notify )
+    def get_voice_gain(self ):
+        return self._get_value( IDX_VOICE_NORMRIZE)
+
+    def set_vosk_max_sec(self, value, *, notify=True  ):
+        return self._set_value( IDX_VOSK_MAX_SEC, value, notify=notify )
+    def get_vosk_max_sec(self ):
+        return self._get_value( IDX_VOSK_MAX_SEC)
 
     def set_audio_butter(self, params, *, notify=True ):
         return self._set_list( IDX_AUDIO_BUTTER, 4, params, notify=notify)
@@ -210,9 +229,14 @@ class ShareParam:
         return self._get_list( IDX_AUDIO_BUTTER,4)
 
     def set_voice_butter(self, params, *, notify=True  ):
-        return self._set_list( IDX_VOICE_BUTTER, 4, params, notify=notify)
+        return self._set_list( IDX_VOICE_BUTTER, 6, params, notify=notify)
     def get_voice_butter(self):
-        return self._get_list( IDX_VOICE_BUTTER,4)
+        return self._get_list( IDX_VOICE_BUTTER, 6)
+
+    def set_text_gain(self, value, *, notify=True  ):
+        return self._set_value( IDX_TEXT_NORMRIZE, value, notify=notify )
+    def get_text_gain(self ):
+        return self._get_value( IDX_TEXT_NORMRIZE)
 
     def set_aux(self, color, vad, en, zc, mute):
         return self._set_list( IDX_AUX, 5, (color,vad,en,zc,mute), notify=False)

@@ -241,3 +241,29 @@ def voice_per_audio_rate( audio:np.ndarray, sampling_rate:int ):
         return rate
     else:
         return 0.0
+
+def adjust_voice_gain(audio: np.ndarray, target_gain: float) -> np.ndarray:
+    """
+    Adjust the gain of an audio signal to ensure its average amplitude reaches the target gain level.
+
+    Parameters:
+    audio (np.ndarray): Input audio signal as a NumPy array.
+    target_gain (float): Desired average amplitude level.
+
+    Returns:
+    np.ndarray: Audio signal with adjusted gain, with original dtype preserved.
+    """
+    abs_audio = np.abs(audio)
+    average_amplitude = np.mean(abs_audio)  # Use np.mean instead of np.average
+    peak_amplitude = np.max(abs_audio)
+
+    if average_amplitude < target_gain:
+        rate_by_peak = 0.9 / peak_amplitude
+        rate_by_average = target_gain / average_amplitude
+        rate = min(rate_by_peak, rate_by_average)
+        
+        # Ensure the result has the same dtype as the input audio
+        adjusted_audio = audio * rate
+        return adjusted_audio.astype(audio.dtype)
+
+    return audio

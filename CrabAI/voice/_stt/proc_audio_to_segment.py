@@ -88,12 +88,14 @@ class AudioToSegment(VFunction):
             conf.set_vad_post_sec(0.2 )
             conf.set_vad_silent_sec(0.8 )
             conf.set_vad_var( 0.3 )
+            conf.set_vad_prefech_sec( 1.6 )
+            conf.set_vad_fade_sec( 0.05 )
             conf.set_aux( 0, 0, 0, 0, 0 )
 
-    def __init__(self, proc_no:int, num_proc:int, conf:ShareParam, data_in:PQ, data_out:PQ, ctl_out:PQ, *, sample_rate:int ):
+    def __init__(self, proc_no:int, num_proc:int, conf:ShareParam, data_in:PQ, data_out:PQ, dump_out:PQ, *, sample_rate:int ):
 
         super().__init__(proc_no,num_proc,conf,data_in,data_out)
-        self.ctl_out:PQ = ctl_out
+        self.dump_out:PQ = dump_out
         self.sample_rate:int = sample_rate if isinstance(sample_rate,int) else 16000
 
         self.pick_trig:float = None
@@ -106,6 +108,12 @@ class AudioToSegment(VFunction):
         self.max_silent_length:int = None
         self.var1:float = None
         self.prefech_length:int = None
+        # fade in/out
+        self.fade_frames = None
+        self.fade_len:int = None
+        self.fade_in_window = None
+        self.fade_out_window = None
+        self.frame_size:int = 512
         self.reload_share_param()
 
         # dump
@@ -113,7 +121,6 @@ class AudioToSegment(VFunction):
         self.dump_last_fr:int = 0
         self.dump_interval_sec:float = 30.0
 
-        self.frame_size:int = 512
         buffer_sec:float = self.dump_interval_sec + 1.0
         # AudioFeatureに必要な長さを先に計算
         self.hists:AudioFeatureBuffer = AudioFeatureBuffer( int(self.sample_rate*buffer_sec/self.frame_size+0.5) )
@@ -133,13 +140,6 @@ class AudioToSegment(VFunction):
         # プリフェッチ用フラグ
         self.prefed:bool=False
 
-        # fade in/out
-        self.fade_frames = int(self.sample_rate*0.05/self.frame_size+1)
-        self.fade_len:int = self.fade_frames * self.frame_size
-        w = signal.windows.hann(self.fade_len*2)
-        self.fade_in_window = w[:self.fade_len]
-        self.fade_out_window = w[self.fade_len:]
-
         # ログ用
         self.mute:bool=False
 
@@ -155,8 +155,13 @@ class AudioToSegment(VFunction):
         self.max_speech_length = int( self.conf.get_vad_max_sec() * self.sample_rate )
         self.post_speech_length = int( self.conf.get_vad_post_sec() * self.sample_rate ) 
         self.max_silent_length = int( self.conf.get_vad_silent_sec() * self.sample_rate )  # 発言終了とする無音時間
-        self.prefech_length = int( 1.6 * self.sample_rate ) # 先行通知する時間
+        self.prefech_length = int( self.conf.get_vad_prefech_sec() * self.sample_rate ) # 先行通知する時間
         self.var1 = self.conf.get_vad_var()
+        self.fade_frames = int( (self.conf.get_vad_fade_sec()*self.sample_rate)/self.frame_size+1)
+        self.fade_len:int = self.fade_frames * self.frame_size
+        w = signal.windows.hann(self.fade_len*2)
+        self.fade_in_window = w[:self.fade_len]
+        self.fade_out_window = w[self.fade_len:]
 
     def proc(self,ev:Ev):
         if isinstance(ev,SttData):
@@ -429,15 +434,9 @@ class AudioToSegment(VFunction):
         stt_data.hists = self.hists.to_df( b, e )
         return stt_data
 
-    def output_ctl(self, ev:Ev):
-        if isinstance(self.ctl_out,PQ):
-            ev.proc_no=self.proc_no
-            ev.num_proc=self.num_proc
-            self.ctl_out.put(ev)
-
     def proc_output_dump(self,utc:float,flush:bool):
         try:
-            if self.dump_interval_sec<=0:
+            if not isinstance(self.dump_out,PQ) or self.dump_interval_sec<=0:
                 return
             last_fr = self.hists.get_pos()
             if self.dump_last_fr>=last_fr:
@@ -447,6 +446,8 @@ class AudioToSegment(VFunction):
                 return
             stt_data:SttData = self.to_stt_data( SttData.Dump, utc, self.dump_last_fr, last_fr )
             self.dump_last_fr = last_fr
-            self.output_ctl( stt_data )
+            stt_data.proc_no=self.proc_no
+            stt_data.num_proc=self.num_proc
+            self.dump_out.put(stt_data)
         finally:
             pass
