@@ -24,6 +24,11 @@ class VoiceTalkEngine(ShareParam):
 
     def __init__(self, *, conf:ShareParam=None, speaker:int=46, record_samplerate:int=1600 ):
         super().__init__(conf)
+        if not isinstance(conf,ShareParam):
+            SttEngine.load_default(self)
+            TtsEngine.load_default(self)
+        self.speaker:int = speaker
+        self._share_key = self._share_array[0]
         self._status = VoiceTalkEngine.ST_STOPPED
         self._callback = None
         self.text_lock:Condition = Condition()
@@ -31,11 +36,8 @@ class VoiceTalkEngine(ShareParam):
         self.text_confidence = 1.0
         self.text_stat=0
         self.th:Thread = None
-        if not isinstance(self.conf,ShareParam):
-            SttEngine.load_default(self)
-            TtsEngine.load_default(self)
         self.stt:SttEngine = None
-        self.tts:TtsEngine = TtsEngine( speaker=speaker, talk_callback=self._tts_callback)
+        self.tts:TtsEngine = None
         self.save_path:str = None
 
     def __getitem__(self,key):
@@ -78,9 +80,9 @@ class VoiceTalkEngine(ShareParam):
 
     def _fn_callback(self, stat:int, *, listen_text=None, confidence=None, talk_text=None, talk_emotion=None, talk_model=None ):
         if stat == VoiceTalkEngine.ST_LISTEN:
-            self.tts.play_listn_in()
+            self.play_listn_in()
         elif stat == VoiceTalkEngine.ST_LISTEN_END:
-            self.tts.play_listen_out()
+            self.play_listen_out()
 
         if self._callback is not None:
             try:
@@ -97,13 +99,15 @@ class VoiceTalkEngine(ShareParam):
             elif stat == VoiceTalkEngine.ST_TALK_END:
                 logger.info( f"[VoiceTalkEngine] talk END" )
 
-    def load(self, *, stt=True):
+    def load(self, *, stt=True, tts=True):
         if stt:
             mic_list = get_mic_devices(samplerate=16000, dtype=np.float32)
             if len(mic_list)>0:
                 src = mic_list[0]['index']
                 self.stt = SttEngine( conf=self, source=src, sample_rate=16000 )
                 self.stt.load()
+        if tts:
+            self.tts = TtsEngine( speaker=self.speaker, talk_callback=self._tts_callback)
 
     def _th_loop(self):
         try:
@@ -144,8 +148,10 @@ class VoiceTalkEngine(ShareParam):
             self.th.join
     
     def tick_time(self, time_sec:float):
-        self.tts.tick_time(time_sec)
-        self.stt.tick_time(time_sec)
+        if self.tts is not None:
+            self.tts.tick_time(time_sec)
+        if self.stt is not None:
+            self.stt.tick_time(time_sec)
 
     def get_recognized_text(self):
         exit_time = time.time()+2.0
@@ -203,7 +209,7 @@ class VoiceTalkEngine(ShareParam):
         elif SttData.Dump==typ:
             return
         elif SttData.NetErr==typ:
-            self.tts.play_error1()
+            self.play_error1()
             return
         else:
             logger.info( f"[STT] {start_sec:.3f} - {end_sec:.3f} {stat} {texts} {confidence} EOT")
@@ -223,11 +229,29 @@ class VoiceTalkEngine(ShareParam):
             self._fn_callback( VoiceTalkEngine.ST_TALK_END, talk_text=None )
             self.stt.set_pause( False )
 
+    def play_listn_in(self):
+        if self.tts is not None:
+            self.tts.play_listn_in()
+
+    def play_listen_out(self):
+        if self.tts is not None:
+            self.tts.play_listen_out()
+
+    def play_error1(self):
+        if self.tts is not None:
+            self.tts.play_error1()
+
+    def play_error2(self):
+        if self.tts is not None:
+            self.tts.play_error2()
+
     def add_talk(self, text ):
         if self.stt is not None:
             self.stt.set_pause( True )
         if self.tts is not None:
             self.tts.add_talk( text )
+        else:
+            print( f"[TTS]{text}" )
 
     def _save_audio(self,stt_data:SttData):
         try:

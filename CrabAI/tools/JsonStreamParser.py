@@ -29,6 +29,7 @@ class JsonStreamParser:
         self._ucode=""
         self._lines=1
         self._cols=1
+        self.done:dict = {}
 
     def _push(self, new_obj, new_phase ):
         if self._obj is None:
@@ -52,6 +53,24 @@ class JsonStreamParser:
 
     def get(self):
         return self._stack[0][1] if self._stack else self._obj
+
+    def get_path(self,dbg=""):
+        if self._key:
+            paths:list = [aaa[2] for aaa in self._stack[1:]]
+            paths.append(self._key)
+            if len(paths)>0:
+                pp = '.'.join(paths)
+                val = self.get()
+                for k in paths:
+                    val = val.get(k)
+                self.done[pp] = val
+
+    def get_done(self,path):
+        if path in self.done:
+            val = self.done[path]
+            del self.done[path]
+            return val
+        return None
 
     def put(self, text ):
         if text:
@@ -156,6 +175,7 @@ class JsonStreamParser:
                 # in value
                 if cc=="\"":
                     self._phase=AFTER_VALUE
+                    self.get_path("A")
                     self._key=None
                     self._val=None
                 else:
@@ -175,6 +195,7 @@ class JsonStreamParser:
                     else:
                         self._obj.append(num)
                     self._phase=AFTER_VALUE
+                    self.get_path("B")
                     self._key=None
                     self._val=None
                     self._put_after_value(cc)
@@ -189,6 +210,7 @@ class JsonStreamParser:
                     else:
                         self._obj.append(None)
                     self._phase=AFTER_VALUE
+                    self.get_path("C")
                     self._key=None
                     self._val=None
                     self._put_after_value(cc)
@@ -229,11 +251,13 @@ class JsonStreamParser:
                 self._phase = AFTER_VALUE
             else:
                 self._phase = END
+            self.get_path("D")
         elif cc=="]":
             if self._pop():
                 self._phase = AFTER_VALUE
             else:
                 self._phase = END
+            self.get_path("E")
         elif cc>" ":
             raise JsonStreamParseError(f"invalid char in after value \"{cc}\"",self._pos)
 
@@ -252,3 +276,23 @@ class JsonStreamParser:
             except:
                 return 0
 
+def test():
+    testdata="""{
+  "test": "sample",
+  "key111": {
+    "key222": "value222"
+  },
+  "key333": {
+    "key444": ["a","b",5,null],
+    "key555": 5,
+    "key666": null
+  }
+}"""
+    parser:JsonStreamParser = JsonStreamParser()
+    for cc in testdata:
+        parser.put(cc)
+    ret = parser.get()
+    print(ret)
+
+if __name__ == "__main__":
+    test()
