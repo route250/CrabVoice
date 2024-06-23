@@ -80,6 +80,10 @@ def convert_to_katakana(text, *, cache_dir):
     
     # 英単語をカタカナに変換
     for word in unique_words:
+        # 固定変換
+        if word == "AI":
+            katakana_dict[word] = "エーアイ"
+            continue
         json_info:dict = json_info_list[_to_prefix(word)]
         content:dict = json_info.get('content')
         if word in content:
