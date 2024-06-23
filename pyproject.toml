@@ -11,7 +11,7 @@ version = "0.0.1"
 authors = [  { name="route250" },]
 description = "local interpreter service"
 license = {text = "MIT License"}
-requires-python = ">=3.11.8"
+requires-python = ">=3.10.12"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: MIT License",
