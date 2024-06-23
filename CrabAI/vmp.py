@@ -5,6 +5,7 @@ import traceback
 import multiprocessing as mp
 from multiprocessing import Process, Array
 from multiprocessing.queues import Queue as PQ
+from multiprocessing.sharedctypes import SynchronizedArray
 from heapq import heapify, heappop, heappush
 from queue import Empty
 import copy
@@ -107,6 +108,8 @@ class ShareParam:
     def __init__(self, conf=None ):
         if isinstance( conf, ShareParam ):
             self._share_array = conf._share_array
+        elif isinstance( conf, SynchronizedArray ):
+            self._share_array = conf
         else:
             self._share_array = Array( 'd', 256 )
         self._share_key = self._share_array[0]

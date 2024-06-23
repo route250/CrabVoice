@@ -54,13 +54,13 @@ class SttEngine(ShareParam):
             SttEngine.load_default(self)
         if isinstance(source,str):
             if source.endswith('.wav'):
-                self.src = WavSource( self, data_in1, sampling_rate=self.sample_rate, source=source  )
+                self.src = WavSource( self._share_array, data_in1, sampling_rate=self.sample_rate, source=source  )
             elif source.endswith('.pyz'):
-                self.src = SttSource( self, data_in1, sampling_rate=self.sample_rate, source=source  )
+                self.src = SttSource( self._share_array, data_in1, sampling_rate=self.sample_rate, source=source  )
             else:
                 raise ValueError(f'invalid source: {source}')
         elif isinstance(source,int):
-            self.src = MicSource( self, data_in1, sampling_rate=self.sample_rate, source=source  )
+            self.src = MicSource( self._share_array, data_in1, sampling_rate=self.sample_rate, source=source  )
         else:
             raise ValueError(f'invalid source: {source}')
         
@@ -69,10 +69,10 @@ class SttEngine(ShareParam):
         data_in4 = self.data_in4 = PQ()
         data_out = self.data_out= PQ()
 
-        self.prc1 = VProcessGrp( SourceToAudio, 1, self, data_in1, data_in2, sample_rate=self.sample_rate )
-        self.prc2 = VProcessGrp( AudioToSegment, 1, self, data_in2, data_in3, dump_out, sample_rate=self.sample_rate )
-        self.prc3 = VProcessGrp( SegmentToVoice, num_vosk, self, data_in3, data_in4 )
-        self.prc4 = VProcessGrp( VoiceToText, 1, self, data_in4, data_out )
+        self.prc1 = VProcessGrp( SourceToAudio, 1, self._share_array, data_in1, data_in2, sample_rate=self.sample_rate )
+        self.prc2 = VProcessGrp( AudioToSegment, 1, self._share_array, data_in2, data_in3, dump_out, sample_rate=self.sample_rate )
+        self.prc3 = VProcessGrp( SegmentToVoice, num_vosk, self._share_array, data_in3, data_in4 )
+        self.prc4 = VProcessGrp( VoiceToText, 1, self._share_array, data_in4, data_out )
         self.th:Thread = None
 
     def load(self):
