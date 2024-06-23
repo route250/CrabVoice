@@ -20,8 +20,8 @@ classifiers = [
     "Operating System :: OS Independent",
     ]
 dependencies = [
-    "python-dotenv", "numpy",
+    "python-dotenv", "numpy<2",
     "sounddevice","pygame",
     "librosa", "scipy", "scikit-learn",
-    "SpeechRecognition", "gTTS", "vosk"
+    "SpeechRecognition", "gTTS", "vosk", "silero"
     ]
