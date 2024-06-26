@@ -49,8 +49,8 @@ def convert_to_katakana(text, *, cache_dir):
     # 文字列から英単語を抽出
     unique_words = set()
     word=''
-    for cc in text.lower()+" ":
-        if 'a'<=cc<='z':
+    for cc in text+" ":
+        if 'a'<=cc<='z' or 'A'<=cc<='Z':
             word+=cc
         elif word and cc in '!#$%&-_/0123456789':
             word+=cc
@@ -125,6 +125,10 @@ def convert_to_katakana(text, *, cache_dir):
     # 変換後の文字列を戻り値として返す
     return text
 
+def convert_kuten(text:str):
+    text = text.replace("、"," ")
+    return text
+
 def main():
 
     # カタカナ変換辞書ファイルの保存ディレクトリ
@@ -132,9 +136,12 @@ def main():
 
     text = 'this is a pen. これはPythonです。JavaScriptも使います。123は数字です。'
     text = '最近の人気のプログラミング言語はPythonやJavaScriptなどがあるよ！'
+    text = 'まあ、最近はね、AIはどんどん進化していますよ'
     while True:
         katakana = convert_to_katakana(text,cache_dir=KATAKANA_DICT_DIR)
         print(katakana)
+        kuten = convert_kuten(katakana)
+        print(kuten)
         text = input( '>> ' )
 
 if __name__ == "__main__":

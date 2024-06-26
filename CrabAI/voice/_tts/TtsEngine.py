@@ -21,7 +21,7 @@ import librosa
 
 from ...net.net_utils import find_first_responsive_host
 from ..voice_utils import mml_to_audio, audio_to_wave_bytes, create_tone
-from ..translate import convert_to_katakana
+from ..translate import convert_to_katakana, convert_kuten
 from CrabAI.vmp import ShareParam
 
 from logging import getLogger
@@ -59,6 +59,7 @@ class TtsEngine:
         ( "VOICEVOX:青山龍星 [囁き]", 86, 'ja_JP' ),
         ( "VOICEVOX:剣崎雌雄 [ノーマル]", 21, 'ja_JP' ),
         ( "VOICEVOX:小夜/SAYO [ノーマル]", 46, 'ja_JP' ),
+        ( "VOICEVOX:雀松朱司 [ノーマル]", 52, 'ja_JP' ),
         ( "OpenAI:alloy", 1001, 'ja_JP' ),
         ( "OpenAI:echo", 1002, 'ja_JP' ),
         ( "OpenAI:fable", 1003, 'ja_JP' ),
@@ -299,6 +300,7 @@ class TtsEngine:
             return None,None
         try:
             text = convert_to_katakana(text,cache_dir=self._katakana_dir)
+            text = convert_kuten(text)
             text = TtsEngine.__penpenpen(text, ' ')
             self._disable_voicevox = 0
             timeout = (5.0,180.0)
@@ -444,6 +446,9 @@ class TtsEngine:
                     audio = None
                 if text is None:
                     self._running_future2 = None
+                    # 再生終了通知
+                    if self.start_call is not None:
+                        self.start_call( None, emotion, tts_model )
                     return
             try:
                 if talk_id == self._talk_id:
@@ -477,9 +482,6 @@ class TtsEngine:
                                 time.sleep(0.2)
                             time.sleep(0.5)
                         self._last_talk = time.time()
-                    # 再生終了通知
-                    if self.start_call is not None:
-                        self.start_call( None, emotion, tts_model )
                     
             except Exception as ex:
                 logger.exception('')

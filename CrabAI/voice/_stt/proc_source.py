@@ -85,6 +85,7 @@ def get_mic_devices( *, samplerate=None, dtype=None, check:bool=True ):
         print(f"try get mic {name} {sr}")
         try:
             if check:
+                lv=0
                 with Mic( samplerate=sr, device=mid, dtype=dtype ) as audio_in:
                     frames,overflow = audio_in.read(1000)
                     if len(frames.shape)>1:
@@ -139,7 +140,9 @@ class SourceBase:
         self.orig_sr:int = 0
         self.seq:int = 0
         self.end_of_data:bool = False
-        self.mute_sw:int = 0
+        self.mute_sw:bool = False
+        self.in_listen:bool = True
+        self.in_talk:bool = False
 
     def load(self):
         if self.state == SourceBase.StInit:
@@ -182,11 +185,10 @@ class SourceBase:
         st = pos
         ed = pos + len(raw)
         stt_data:SttData = SttData( SttData.Audio, utc, st, ed, sample_rate=self.orig_sr, raw=raw, seq=self.seq)
-        if self.mute_sw>0:
+        if self.mute_sw or not self.in_listen or self.in_talk:
             mute_array:np.ndarray = np.ones(10, dtype=np.float32)
             stt_data.hists = pd.DataFrame( {'mute': mute_array })
-            if self.mute_sw<999:
-                self.mute_sw-=1
+        self.mute_sw = not self.in_listen or self.in_talk
         self.data_out.put( stt_data )
         self.seq+=1
 
@@ -205,11 +207,11 @@ class SourceBase:
     def stop_source(self):
         raise NotImplementedError()
 
-    def set_mute(self,b:bool):
-        if b:
-            self.mute_sw = 999
-        else:
-            self.mute_sw = 10
+    def set_mute(self, *, in_talk=None, in_listen=None):
+        if isinstance(in_talk,bool) and self.in_talk != in_talk:
+            self.in_talk = in_talk
+        if isinstance(in_listen,bool) and self.in_listen != in_listen:
+            self.in_listen = in_listen
 
 class MicSource(SourceBase):
 
@@ -218,6 +220,7 @@ class MicSource(SourceBase):
         self.mic_sampling_rate = int(mic_sampling_rate) if isinstance(mic_sampling_rate,(int,float)) and mic_sampling_rate>self.sampling_rate else self.sampling_rate
         self.utc:float = time.time()
         self.pos:int = 0
+        self.in_listen = False
 
     def load_source(self):
         if self.source is not None:

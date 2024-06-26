@@ -154,6 +154,7 @@ class VoiceTalkEngine(ShareParam):
             self.stt.tick_time(time_sec)
 
     def get_recognized_text(self):
+        self.stt.set_pause( in_listen=True )
         exit_time = time.time()+2.0
         with self.text_lock:
             while time.time()<exit_time:
@@ -163,6 +164,7 @@ class VoiceTalkEngine(ShareParam):
                         text = ' '.join(self.text_buf)
                         self.text_buf = []
                         confs = self.text_confidence
+                        self.stt.set_pause( in_listen=False )
                         return text, confs
                 else:
                     self.text_lock.wait(0.5)
@@ -221,13 +223,13 @@ class VoiceTalkEngine(ShareParam):
         if text:
             logger.info( f"[TTS] {text}")
             self._status = VoiceTalkEngine.ST_TALK
-            self.stt.set_pause( True )
+            self.stt.set_pause( in_talk=True )
             self._fn_callback( VoiceTalkEngine.ST_TALK, talk_text=text, talk_emotion=emotion, talk_model=model )
         else:
             logger.info( f"[TTS] stop")
             self._status = VoiceTalkEngine.ST_LISTEN
             self._fn_callback( VoiceTalkEngine.ST_TALK_END, talk_text=None )
-            self.stt.set_pause( False )
+            self.stt.set_pause( in_talk=False )
 
     def play_listn_in(self):
         if self.tts is not None:
@@ -246,8 +248,8 @@ class VoiceTalkEngine(ShareParam):
             self.tts.play_error2()
 
     def add_talk(self, text ):
-        if self.stt is not None:
-            self.stt.set_pause( True )
+        # if self.stt is not None:
+        #     self.stt.set_pause( True )
         if self.tts is not None:
             self.tts.add_talk( text )
         else:
