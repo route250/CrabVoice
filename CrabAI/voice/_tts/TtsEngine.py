@@ -308,12 +308,18 @@ class TtsEngine:
             s:requests.Session = requests.Session()
             s.mount(f'{sv_url}/audio_query', HTTPAdapter(max_retries=1))
             res1 : requests.Response = requests.post( f'{sv_url}/audio_query', params=params)
-
+            data = res1.content
+            res1_json:dict = json.loads(data)
+            ss:float = res1_json.get('speedScale',1.0)
+            res1_json['speedScale'] = ss*1.2
+            ps:float = res1_json.get('pitchScale',0.0)
+            res1_json['pitchScale'] = ps-0.1
+            data = json.dumps(res1_json,ensure_ascii=False)
             params = {'speaker': self.speaker, 'timeout': timeout }
             headers = {'content-type': 'application/json'}
             res = requests.post(
                 f'{sv_url}/synthesis',
-                data=res1.content,
+                data=data,
                 params=params,
                 headers=headers
             )
