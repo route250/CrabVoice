@@ -60,6 +60,9 @@ class TtsEngine:
         ( "VOICEVOX:剣崎雌雄 [ノーマル]", 21, 'ja_JP' ),
         ( "VOICEVOX:小夜/SAYO [ノーマル]", 46, 'ja_JP' ),
         ( "VOICEVOX:雀松朱司 [ノーマル]", 52, 'ja_JP' ),
+        ( "VOICEVOX:No.7 [ノーマル]", 29, 'ja_JP' ),
+        ( "VOICEVOX:No.7 [アナウンス]", 30, 'ja_JP' ),
+        ( "VOICEVOX:No.7 [読み聞かせ]", 31, 'ja_JP' ),
         ( "OpenAI:alloy", 1001, 'ja_JP' ),
         ( "OpenAI:echo", 1002, 'ja_JP' ),
         ( "OpenAI:fable", 1003, 'ja_JP' ),
@@ -311,7 +314,7 @@ class TtsEngine:
             data = res1.content
             res1_json:dict = json.loads(data)
             ss:float = res1_json.get('speedScale',1.0)
-            res1_json['speedScale'] = ss*1.2
+            res1_json['speedScale'] = ss*1.1
             ps:float = res1_json.get('pitchScale',0.0)
             res1_json['pitchScale'] = ps-0.1
             data = json.dumps(res1_json,ensure_ascii=False)
