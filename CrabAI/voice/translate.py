@@ -47,7 +47,7 @@ def convert_to_katakana(text, *, cache_dir):
     text: 変換対象のテキスト
     """
     # 文字列から英単語を抽出
-    unique_words = set()
+    unique_words:set[str] = set()
     word=''
     for cc in text+" ":
         if 'a'<=cc<='z' or 'A'<=cc<='Z':
@@ -84,6 +84,9 @@ def convert_to_katakana(text, *, cache_dir):
         if word == "AI":
             katakana_dict[word] = "エーアイ"
             continue
+        if word.lower() == "json":
+            katakana_dict[word] = "ジェイソン"
+            continue
         json_info:dict = json_info_list[_to_prefix(word)]
         content:dict = json_info.get('content')
         if word in content:
@@ -101,7 +104,10 @@ def convert_to_katakana(text, *, cache_dir):
             for word,katakana in new_katakana.items():
                 if len(katakana)>0:
                     prefix = _to_prefix(word)
-                    json_info:dict = json_info_list[prefix]
+                    json_info:dict = json_info_list.get(prefix)
+                    if json_info is None:
+                        print(f"[convert_to_katakana] key not found? prefix:{prefix} word:{word}")
+                        continue
                     content:dict = json_info.get('content')
                     content[word] = katakana
                     katakana_dict[word] = katakana
