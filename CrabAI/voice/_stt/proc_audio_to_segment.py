@@ -211,7 +211,7 @@ class AudioToSegment(VFunction):
             if not self.mute:
                 if mute:
                     self.mute=True
-                    print("### MUTE TRUE ###")
+                    print("[A2S] ### MUTE TRUE ###")
                     self.rec=NON_VOICE
                     self.rec_start = 0
                     self.pos_SEGSTART = 0
@@ -220,7 +220,7 @@ class AudioToSegment(VFunction):
             else:
                 if not mute and vad_ave<self.dn_trig:
                     self.mute = False
-                    print("### MUTE FALSE ###")
+                    print("[A2S] ### MUTE FALSE ###")
 
             current_pos:int = self.seg_buffer.get_pos()
             hists_len:int = self.hists.put( hi,lo, self.rec, vad, vad_ave, energy, zc, var, self.mute )

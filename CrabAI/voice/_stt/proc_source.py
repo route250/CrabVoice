@@ -208,10 +208,15 @@ class SourceBase:
         raise NotImplementedError()
 
     def set_mute(self, *, in_talk=None, in_listen=None):
+        before:bool = not self.in_listen and self.in_talk
         if isinstance(in_talk,bool) and self.in_talk != in_talk:
+            # print(f"[STT] in_talk {self.in_talk} -> {in_talk}")
             self.in_talk = in_talk
         if isinstance(in_listen,bool) and self.in_listen != in_listen:
+            # print(f"[STT] in_listen {self.in_listen} -> {in_listen}")
             self.in_listen = in_listen
+        after:bool = not self.in_listen and self.in_talk
+        return after, before
 
 class MicSource(SourceBase):
 

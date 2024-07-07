@@ -80,7 +80,7 @@ class VoiceTalkEngine(ShareParam):
 
     def _fn_callback(self, stat:int, *, listen_text=None, confidence=None, talk_text=None, talk_emotion=None, talk_model=None ):
         if stat == VoiceTalkEngine.ST_LISTEN:
-            self.play_listn_in()
+            self.play_listen_in()
         elif stat == VoiceTalkEngine.ST_LISTEN_END:
             self.play_listen_out()
 
@@ -91,9 +91,9 @@ class VoiceTalkEngine(ShareParam):
                 logger.exception('')
         else:
             if stat == VoiceTalkEngine.ST_LISTEN:
-                logger.info( f"[VoiceTalkEngine] listen {listen_text} {confidence}" )
+                logger.info( f"[VoiceTalkEngine] listen in {listen_text} {confidence}" )
             elif stat == VoiceTalkEngine.ST_LISTEN_END:
-                logger.info( f"[VoiceTalkEngine] listen {listen_text} {confidence} __EOT__" )
+                logger.info( f"[VoiceTalkEngine] listen out {listen_text} {confidence} __EOT__" )
             elif stat == VoiceTalkEngine.ST_TALK:
                 logger.info( f"[VoiceTalkEngine] talk {talk_text}" )
             elif stat == VoiceTalkEngine.ST_TALK_END:
@@ -116,7 +116,7 @@ class VoiceTalkEngine(ShareParam):
                 try:
                     stt_data:SttData = self.stt.get_data( timeout=0.1 )
                     q2=True
-                    print( f"[OUT] {stt_data}")
+                    # print( f"[OUT] {stt_data}")
                     if stt_data.typ == SttData.Dump:
                         self._save_audio(stt_data)
                     elif stt_data.typ == SttData.Text or stt_data.typ == SttData.Term:
@@ -130,8 +130,7 @@ class VoiceTalkEngine(ShareParam):
                     break
 
         except:
-            traceback.print_exc()
-            pass
+            logger.exception('')
         finally:
             self.stt.stop()
             self.stt.join()
@@ -154,20 +153,24 @@ class VoiceTalkEngine(ShareParam):
             self.stt.tick_time(time_sec)
 
     def get_recognized_text(self):
-        self.stt.set_pause( in_listen=True )
-        exit_time = time.time()+2.0
-        with self.text_lock:
-            while time.time()<exit_time:
-                if self.text_stat==3:
-                    self.text_stat = 0
-                    if len(self.text_buf)>0:
-                        text = ' '.join(self.text_buf)
-                        self.text_buf = []
-                        confs = self.text_confidence
-                        self.stt.set_pause( in_listen=False )
-                        return text, confs
-                else:
-                    self.text_lock.wait(0.5)
+        """音声認識による入力"""
+        self.set_pause( in_listen=True )
+        while True:
+            exit_time = time.time()+2.0
+            with self.text_lock:
+                while time.time()<exit_time:
+                    if self.text_stat==3:
+                        self.text_stat = 0
+                        if len(self.text_buf)>0:
+                            text = ' '.join(self.text_buf)
+                            self.text_buf = []
+                            confs = self.text_confidence
+                            self.set_pause( in_listen=False )
+                            return text, confs
+                    else:
+                        self.text_lock.wait(0.5)
+            self.tick_time( time.time() )
+
         return None,None
 
     def _fn_stt_callback(self, stt_data:SttData ):
@@ -223,17 +226,36 @@ class VoiceTalkEngine(ShareParam):
         if text:
             logger.info( f"[TTS] {text}")
             self._status = VoiceTalkEngine.ST_TALK
-            self.stt.set_pause( in_talk=True )
+            self.set_pause( in_talk=True )
             self._fn_callback( VoiceTalkEngine.ST_TALK, talk_text=text, talk_emotion=emotion, talk_model=model )
         else:
             logger.info( f"[TTS] stop")
             self._status = VoiceTalkEngine.ST_LISTEN
             self._fn_callback( VoiceTalkEngine.ST_TALK_END, talk_text=None )
-            self.stt.set_pause( in_talk=False )
+            self.set_pause( in_talk=False )
 
-    def play_listn_in(self):
+    def set_pause(self, *, in_talk=None, in_listen=None ):
+        if self.stt:
+            after,before = self.stt.set_pause( in_talk=in_talk, in_listen=in_listen)
+            if after != before:
+                if after:
+                    self.play_mute_in()
+                else:
+                    self.play_mute_out()
+            return after,before
+        return False,False
+
+    def play_mute_in(self):
         if self.tts is not None:
-            self.tts.play_listn_in()
+            self.tts.play_mute_in()
+
+    def play_mute_out(self):
+        if self.tts is not None:
+            self.tts.play_mute_out()
+
+    def play_listen_in(self):
+        if self.tts is not None:
+            self.tts.play_listen_in()
 
     def play_listen_out(self):
         if self.tts is not None:
@@ -253,21 +275,21 @@ class VoiceTalkEngine(ShareParam):
         if self.tts is not None:
             self.tts.add_talk( text )
         else:
-            print( f"[TTS]{text}" )
+            print( f"[TTS]add_talk {text}" )
 
     def _save_audio(self,stt_data:SttData):
         try:
             if self.save_path is not None and os.path.isdir(self.save_path):
                 max_vad = max(stt_data['vad'])
                 if max_vad>0.2:
-                    print( f"[DUMP] {stt_data}")
+                    logger.info( f"[DUMP] {stt_data}")
                     dt = datetime.datetime.now()
                     dir = os.path.join( self.save_path, dt.strftime("%Y%m%d") )
                     os.makedirs(dir,exist_ok=True)
                     filename = dt.strftime("audio_%Y%m%d_%H%M%S")
                     file_path = os.path.join( dir, filename )
                     stt_data.save(file_path)
-                else:
-                    print( f"[dump] {stt_data}")                    
+                # else:
+                #     print( f"[dump] {stt_data}")                    
         except:
             logger.exception("can not save data")

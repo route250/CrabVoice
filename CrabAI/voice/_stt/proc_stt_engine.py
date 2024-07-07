@@ -132,4 +132,5 @@ class SttEngine(ShareParam):
 
     def set_pause(self, *, in_talk=None, in_listen=None ):
         if isinstance(self.src,MicSource):
-            self.src.set_mute(in_talk=in_talk, in_listen=in_listen)
+            return self.src.set_mute(in_talk=in_talk, in_listen=in_listen)
+        return False,False

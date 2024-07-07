@@ -30,39 +30,93 @@ logger = getLogger(__name__)
 class TtsEngine:
     EOT:str = "<|EOT|>"
     VoiceList = [
-        ( "VOICEVOX:四国めたん [あまあま]", 0, 'ja_JP' ),
-        ( "VOICEVOX:四国めたん [ノーマル]", 2, 'ja_JP' ),
-        ( "VOICEVOX:四国めたん [セクシー]", 4, 'ja_JP' ),
-        ( "VOICEVOX:四国めたん [ツンツン]", 6, 'ja_JP' ),
-        ( "VOICEVOX:ずんだもん [あまあま]", 1, 'ja_JP' ),
-        ( "VOICEVOX:ずんだもん [ノーマル]", 3, 'ja_JP' ),
-        ( "VOICEVOX:ずんだもん [セクシー]", 5, 'ja_JP' ),
-        ( "VOICEVOX:ずんだもん [ツンツン]", 7, 'ja_JP' ),
-        ( "VOICEVOX:春日部つむぎ [ノーマル]",8, 'ja_JP' ),
-        ( "VOICEVOX:波音リツ [ノーマル]", 9, 'ja_JP' ),
-        ( "VOICEVOX:雨晴はう [ノーマル]", 10, 'ja_JP' ),
-        ( "VOICEVOX:玄野武宏 [ノーマル]", 11, 'ja_JP' ),
-        ( "VOICEVOX:白上虎太郎 [ふつう]", 11, 'ja_JP' ),
-        ( "VOICEVOX:白上虎太郎 [わーい]", 32, 'ja_JP' ),
-        ( "VOICEVOX:白上虎太郎 [びくびく]", 33, 'ja_JP' ),
-        ( "VOICEVOX:白上虎太郎 [おこ]", 34, 'ja_JP' ),
-        ( "VOICEVOX:白上虎太郎 [びえーん]", 36, 'ja_JP' ),
-        ( "VOICEVOX:冥鳴ひまり [ノーマル]", 14, 'ja_JP' ),
-        ( "VOICEVOX:もち子(cv 明日葉よもぎ)[ノーマル]", 20, 'ja_JP' ),
-        ( "VOICEVOX:小夜/SAYO [ノーマル]", 46, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星 [ノーマル]", 13, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星 [熱血]", 81, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星 [不機嫌]", 82, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星 [喜び]", 83, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星 [しっとり]", 84, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星 [かなしみ]", 85, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星 [囁き]", 86, 'ja_JP' ),
-        ( "VOICEVOX:剣崎雌雄 [ノーマル]", 21, 'ja_JP' ),
-        ( "VOICEVOX:小夜/SAYO [ノーマル]", 46, 'ja_JP' ),
-        ( "VOICEVOX:雀松朱司 [ノーマル]", 52, 'ja_JP' ),
-        ( "VOICEVOX:No.7 [ノーマル]", 29, 'ja_JP' ),
-        ( "VOICEVOX:No.7 [アナウンス]", 30, 'ja_JP' ),
-        ( "VOICEVOX:No.7 [読み聞かせ]", 31, 'ja_JP' ),
+        ( "VOICEVOX:四国めたん[ノーマル]",  2, 'ja_JP' ),
+        ( "VOICEVOX:四国めたん[あまあま]",  0, 'ja_JP' ),
+        ( "VOICEVOX:四国めたん[ツンツン]",  6, 'ja_JP' ),
+        ( "VOICEVOX:四国めたん[セクシー]",  4, 'ja_JP' ),
+        ( "VOICEVOX:四国めたん[ささやき]", 36, 'ja_JP' ),
+        ( "VOICEVOX:四国めたん[ヒソヒソ]", 37, 'ja_JP' ),
+        ( "VOICEVOX:ずんだもん[ノーマル]",  3, 'ja_JP' ),
+        ( "VOICEVOX:ずんだもん[あまあま]",  1, 'ja_JP' ),
+        ( "VOICEVOX:ずんだもん[ツンツン]",  7, 'ja_JP' ),
+        ( "VOICEVOX:ずんだもん[セクシー]",  5, 'ja_JP' ),
+        ( "VOICEVOX:ずんだもん[ささやき]", 22, 'ja_JP' ),
+        ( "VOICEVOX:ずんだもん[ヒソヒソ]", 38, 'ja_JP' ),
+        ( "VOICEVOX:ずんだもん[ヘロヘロ]", 75, 'ja_JP' ),
+        ( "VOICEVOX:ずんだもん[なみだめ]", 76, 'ja_JP' ),
+        ( "VOICEVOX:春日部つむぎ[ノーマル]",  8, 'ja_JP' ),
+        ( "VOICEVOX:雨晴はう[ノーマル]", 10, 'ja_JP' ),
+        ( "VOICEVOX:波音リツ[ノーマル]",  9, 'ja_JP' ),
+        ( "VOICEVOX:波音リツ[クイーン]", 65, 'ja_JP' ),
+        ( "VOICEVOX:玄野武宏[ノーマル]", 11, 'ja_JP' ),
+        ( "VOICEVOX:玄野武宏[喜び]", 39, 'ja_JP' ),
+        ( "VOICEVOX:玄野武宏[ツンギレ]", 40, 'ja_JP' ),
+        ( "VOICEVOX:玄野武宏[悲しみ]", 41, 'ja_JP' ),
+        ( "VOICEVOX:白上虎太郎[ふつう]", 12, 'ja_JP' ),
+        ( "VOICEVOX:白上虎太郎[わーい]", 32, 'ja_JP' ),
+        ( "VOICEVOX:白上虎太郎[びくびく]", 33, 'ja_JP' ),
+        ( "VOICEVOX:白上虎太郎[おこ]", 34, 'ja_JP' ),
+        ( "VOICEVOX:白上虎太郎[びえーん]", 35, 'ja_JP' ),
+        ( "VOICEVOX:青山龍星[ノーマル]", 13, 'ja_JP' ),
+        ( "VOICEVOX:青山龍星[熱血]", 81, 'ja_JP' ),
+        ( "VOICEVOX:青山龍星[不機嫌]", 82, 'ja_JP' ),
+        ( "VOICEVOX:青山龍星[喜び]", 83, 'ja_JP' ),
+        ( "VOICEVOX:青山龍星[しっとり]", 84, 'ja_JP' ),
+        ( "VOICEVOX:青山龍星[かなしみ]", 85, 'ja_JP' ),
+        ( "VOICEVOX:青山龍星[囁き]", 86, 'ja_JP' ),
+        ( "VOICEVOX:冥鳴ひまり[ノーマル]", 14, 'ja_JP' ),
+        ( "VOICEVOX:九州そら[ノーマル]", 16, 'ja_JP' ),
+        ( "VOICEVOX:九州そら[あまあま]", 15, 'ja_JP' ),
+        ( "VOICEVOX:九州そら[ツンツン]", 18, 'ja_JP' ),
+        ( "VOICEVOX:九州そら[セクシー]", 17, 'ja_JP' ),
+        ( "VOICEVOX:九州そら[ささやき]", 19, 'ja_JP' ),
+        ( "VOICEVOX:もち子さん[ノーマル]", 20, 'ja_JP' ),
+        ( "VOICEVOX:もち子さん[セクシー／あん子]", 66, 'ja_JP' ),
+        ( "VOICEVOX:もち子さん[泣き]", 77, 'ja_JP' ),
+        ( "VOICEVOX:もち子さん[怒り]", 78, 'ja_JP' ),
+        ( "VOICEVOX:もち子さん[喜び]", 79, 'ja_JP' ),
+        ( "VOICEVOX:もち子さん[のんびり]", 80, 'ja_JP' ),
+        ( "VOICEVOX:剣崎雌雄[ノーマル]", 21, 'ja_JP' ),
+        ( "VOICEVOX:WhiteCUL[ノーマル]", 23, 'ja_JP' ),
+        ( "VOICEVOX:WhiteCUL[たのしい]", 24, 'ja_JP' ),
+        ( "VOICEVOX:WhiteCUL[かなしい]", 25, 'ja_JP' ),
+        ( "VOICEVOX:WhiteCUL[びえーん]", 26, 'ja_JP' ),
+        ( "VOICEVOX:後鬼[人間ver.]", 27, 'ja_JP' ),
+        ( "VOICEVOX:後鬼[ぬいぐるみver.]", 28, 'ja_JP' ),
+        ( "VOICEVOX:No.7[ノーマル]", 29, 'ja_JP' ),
+        ( "VOICEVOX:No.7[アナウンス]", 30, 'ja_JP' ),
+        ( "VOICEVOX:No.7[読み聞かせ]", 31, 'ja_JP' ),
+        ( "VOICEVOX:ちび式じい[ノーマル]", 42, 'ja_JP' ),
+        ( "VOICEVOX:櫻歌ミコ[ノーマル]", 43, 'ja_JP' ),
+        ( "VOICEVOX:櫻歌ミコ[第二形態]", 44, 'ja_JP' ),
+        ( "VOICEVOX:櫻歌ミコ[ロリ]", 45, 'ja_JP' ),
+        ( "VOICEVOX:小夜/SAYO[ノーマル]", 46, 'ja_JP' ),
+        ( "VOICEVOX:ナースロボ＿タイプＴ[ノーマル]", 47, 'ja_JP' ),
+        ( "VOICEVOX:ナースロボ＿タイプＴ[楽々]", 48, 'ja_JP' ),
+        ( "VOICEVOX:ナースロボ＿タイプＴ[恐怖]", 49, 'ja_JP' ),
+        ( "VOICEVOX:ナースロボ＿タイプＴ[内緒話]", 50, 'ja_JP' ),
+        ( "VOICEVOX:†聖騎士 紅桜†[ノーマル]", 51, 'ja_JP' ),
+        ( "VOICEVOX:雀松朱司[ノーマル]", 52, 'ja_JP' ),
+        ( "VOICEVOX:麒ヶ島宗麟[ノーマル]", 53, 'ja_JP' ),
+        ( "VOICEVOX:春歌ナナ[ノーマル]", 54, 'ja_JP' ),
+        ( "VOICEVOX:猫使アル[ノーマル]", 55, 'ja_JP' ),
+        ( "VOICEVOX:猫使アル[おちつき]", 56, 'ja_JP' ),
+        ( "VOICEVOX:猫使アル[うきうき]", 57, 'ja_JP' ),
+        ( "VOICEVOX:猫使ビィ[ノーマル]", 58, 'ja_JP' ),
+        ( "VOICEVOX:猫使ビィ[おちつき]", 59, 'ja_JP' ),
+        ( "VOICEVOX:猫使ビィ[人見知り]", 60, 'ja_JP' ),
+        ( "VOICEVOX:中国うさぎ[ノーマル]", 61, 'ja_JP' ),
+        ( "VOICEVOX:中国うさぎ[おどろき]", 62, 'ja_JP' ),
+        ( "VOICEVOX:中国うさぎ[こわがり]", 63, 'ja_JP' ),
+        ( "VOICEVOX:中国うさぎ[へろへろ]", 64, 'ja_JP' ),
+        ( "VOICEVOX:栗田まろん[ノーマル]", 67, 'ja_JP' ),
+        ( "VOICEVOX:あいえるたん[ノーマル]", 68, 'ja_JP' ),
+        ( "VOICEVOX:満別花丸[ノーマル]", 69, 'ja_JP' ),
+        ( "VOICEVOX:満別花丸[元気]", 70, 'ja_JP' ),
+        ( "VOICEVOX:満別花丸[ささやき]", 71, 'ja_JP' ),
+        ( "VOICEVOX:満別花丸[ぶりっ子]", 72, 'ja_JP' ),
+        ( "VOICEVOX:満別花丸[ボーイ]", 73, 'ja_JP' ),
+        ( "VOICEVOX:琴詠ニア[ノーマル]", 74, 'ja_JP' ),
         ( "OpenAI:alloy", 1001, 'ja_JP' ),
         ( "OpenAI:echo", 1002, 'ja_JP' ),
         ( "OpenAI:fable", 1003, 'ja_JP' ),
@@ -114,7 +168,7 @@ class TtsEngine:
         # pygame初期化済みフラグ
         self.pygame_init:bool = False
         # beep
-        self.beep_ch:pygame.mixer.Channel  = None
+        self.beep_ch:list[pygame.mixer.Channel]  = []
         # 音声エンジン無効時間
         self._disable_gtts: float = 0.0
         self._disable_openai: float = 0.0
@@ -125,8 +179,12 @@ class TtsEngine:
         self._voicevox_list = list(set([os.getenv('VOICEVOX_HOST','127.0.0.1'),'127.0.0.1','192.168.0.104','chickennanban.ddns.net','chickennanban1.ddns.net','chickennanban2.ddns.net','chickennanban3.ddns.net']))
         self._katakana_dir = katakana_dir
 
+        # フェードイン用
         self.feed = create_tone( 32, time=0.4, volume=0.9, sample_rate=16000)
         self.feed_wave = audio_to_wave_bytes(self.feed, sample_rate=16000 )
+        # 再生完了を同期するためのデータ
+        self.sync_wave = audio_to_wave_bytes(np.zeros(1, dtype=np.float32), sample_rate=16000 )
+        # 通知用の音声データ
         self.sound_listen_in = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ce", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound_listen_out = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ec", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound_error1 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t240v15 O3aa", sampling_rate=16000 ))), sample_rate=16000 )
@@ -172,13 +230,13 @@ class TtsEngine:
         try:
             if self.pygame_init and (time.time()-self._last_talk)>100.0:
                 self.pygame_init = False
-                print(f"[PyGame]reset")
+                logger.info(f"[PyGame]reset")
                 pygame.mixer.quit()
         except:
             logger.exception("can not reset pygame")
         try:
             if not self.pygame_init:
-                print(f"[PyGame]init")
+                logger.info(f"[PyGame]init")
                 pygame.mixer.pre_init(16000,-16,1,10240)
                 pygame.mixer.quit()
                 pygame.mixer.init()
@@ -245,7 +303,7 @@ class TtsEngine:
     def add_talk(self, full_text:str, emotion:int = 0 ) -> None:
         talk_id:int = self._talk_id
         for text in TtsEngine.split_talk_text(full_text):
-            print(f"[TTS] put {text}")
+            logger.info(f"[TTS] wave_queue.put {text}")
             self.wave_queue.put( (talk_id, text, emotion ) )
         with self.lock:
             if self._running_future is None:
@@ -255,7 +313,7 @@ class TtsEngine:
         """ボイススレッド
         テキストキューからテキストを取得して音声に変換して発声キューへ送る
         """
-        print(f"[TTS] thread start")
+        logger.info(f"[TTS] thread start")
         while True:
             talk_id:int = -1
             text:str = None
@@ -270,10 +328,10 @@ class TtsEngine:
                     text = None
                 if text is None:
                     self._running_future = None
-                    print(f"[TTS] thread end")
+                    logger.info(f"[TTS] thread end")
                     return
             try:
-                print(f"[TTS] text {text}")
+                logger.info(f"[TTS] text_to_audio {text}")
                 if talk_id == self._talk_id:
                     # textから音声へ
                     audio_bytes, tts_model = self._text_to_audio( text, emotion )
@@ -326,9 +384,11 @@ class TtsEngine:
                 params=params,
                 headers=headers
             )
-            model:str = TtsEngine.id_to_name(self.speaker)
-            # wave形式 デフォルトは24kHz
-            return res.content, model
+            if res.status_code == 200:
+                model:str = TtsEngine.id_to_name(self.speaker)
+                # wave形式 デフォルトは24kHz
+                return res.content, model
+            logger.error( f"[VOICEVOX] code:{res.status_code} {res.text}")
         except requests.exceptions.ConnectTimeout as ex:
             logger.error( f"[VOICEVOX] {type(ex)} {ex}")
         except requests.exceptions.ConnectionError as ex:
@@ -435,9 +495,17 @@ class TtsEngine:
         if wave is None:
             wave, model = self._text_to_audio_by_gtts( text, emotion )
         return wave,model
-        
+
+    def is_playing(self) ->bool:
+        if not self.wave_queue.empty() or not self.play_queue.empty():
+            return True
+        if self._running_future is not None or self._running_future2 is not None:
+            return True
+        return False
+
     def run_talk(self)->None:
         start:bool = False
+        final:bool = False
         while True:
             talk_id:int = -1
             text:str = None
@@ -447,18 +515,34 @@ class TtsEngine:
             with self.lock:
                 try:
                     talk_id, text, emotion, audio, tts_model = self.play_queue.get_nowait()
+                    final = False
                 except Exception as ex:
                     if not isinstance( ex, Empty ):
                         logger.exception('')
                     talk_id=-1
                     text = None
                     audio = None
-                if text is None:
-                    self._running_future2 = None
-                    # 再生終了通知
-                    if self.start_call is not None:
-                        self.start_call( None, emotion, tts_model )
-                    return
+            if text is None:
+                if not self.wave_queue.empty() or self._running_future is not None:
+                    final = False
+                elif not pygame.mixer.music.get_busy():
+                    if not final:
+                        logger.info(f"[TTS] play empty")
+                        final = True
+                        sync_buffer = BytesIO(self.sync_wave)
+                        sync_buffer.seek(0)
+                        pygame.mixer.music.load(sync_buffer)
+                        pygame.mixer.music.play() #
+                    else:
+                        logger.info(f"[TTS] play thread exit")
+                        with self.lock:
+                            self._running_future2 = None
+                        # 再生終了通知
+                        if self.start_call is not None:
+                            self.start_call( None, emotion, tts_model )
+                        return
+                time.sleep(0.2)
+                continue
             try:
                 if talk_id == self._talk_id:
                     # 再生開始通知
@@ -469,55 +553,87 @@ class TtsEngine:
                         self._sound_init()
                         audio_buffer = BytesIO(audio)
                         audio_buffer.seek(0)
-                        if (time.time()-self._last_talk)>5.0:
-                            feed_buffer = BytesIO(self.feed_wave)
-                            feed_buffer.seek(0)
-                            pygame.mixer.music.load(feed_buffer)
-                            pygame.mixer.music.play()
-                            pygame.mixer.music.queue(audio_buffer)
+                        if not pygame.mixer.music.get_busy():
+                            if (time.time()-self._last_talk)>5.0:
+                                logger.info(f"[TTS] wakeup play {text}")
+                                feed_buffer = BytesIO(self.feed_wave)
+                                feed_buffer.seek(0)
+                                pygame.mixer.music.load(feed_buffer)
+                                pygame.mixer.music.play()
+                                pygame.mixer.music.queue(audio_buffer)
+                            else:
+                                logger.info(f"[TTS] start play {text}")
+                                pygame.mixer.music.load(audio_buffer)
+                                pygame.mixer.music.play()
                         else:
-                            pygame.mixer.music.load(audio_buffer)
-                            pygame.mixer.music.play()
-                        while not pygame.mixer.music.get_busy():
-                            time.sleep(0.1)
+                            logger.info(f"[TTS] queue play {text}")
+                            pygame.mixer.music.queue(audio_buffer)
                         self._last_talk = time.time()
                     # 再生終了待ち
                     if audio is not None:
-                        if pygame.mixer.music.get_busy():
-                            while pygame.mixer.music.get_busy():
-                                if talk_id != self._talk_id:
-                                    pygame.mixer.music.stop()
-                                    break
-                                time.sleep(0.2)
-                            time.sleep(0.5)
+                        while pygame.mixer.music.get_busy():
+                            if talk_id != self._talk_id:
+                                pygame.mixer.music.stop()
+                                logger.info(f"[TTS] play kill")
+                                break
+                            time.sleep(0.2)
                         self._last_talk = time.time()
                     
             except Exception as ex:
                 logger.exception('')
 
-    def play_listn_in(self):
+    def play_mute_in(self):
+        logger.info("beep mute_in")
+        self._play_beep( self.sound_listen_in )
+
+    def play_mute_out(self):
+        logger.info("beep mute_out")
+        self._play_beep( self.sound_listen_out )
+
+    def play_listen_in(self):
+        logger.info("beep listen_in")
         self._play_beep( self.sound_listen_in )
 
     def play_listen_out(self):
+        logger.info("beep listen_out")
         self._play_beep( self.sound_listen_out )
 
     def play_error1(self):
+        logger.info("beep error1")
         self._play_beep( self.sound_error1 )
 
     def play_error2(self):
+        logger.info("beep error2")
         self._play_beep( self.sound_error2 )
 
     def _play_beep(self, snd ):
         try:
             self._sound_init()
-            if self.beep_ch is not None:
-                while self.beep_ch.get_busy():
+            while self.beep_ch:
+                ch:pygame.mixer.Channel = self.beep_ch.pop(0)
+                while ch.get_busy():
                     pygame.time.delay(200)
             wb: BytesIO = BytesIO( snd )
             wb.seek(0)
             sound = pygame.mixer.Sound( wb )
-            self.beep_ch:pygame.mixer.Channel = sound.play(fade_ms=0)
+            self.beep_ch.append( sound.play(fade_ms=0) )
             #pygame.time.delay( int(duratin_sec * 1000) )
             self._last_talk = time.time()
+        except:
+            logger.exception('')
+
+    def _play_voice(self, snd ):
+        try:
+            self._sound_init()
+            wb: BytesIO = BytesIO( snd )
+            wb.seek(0)
+            sound = pygame.mixer.Sound( wb )
+            print("#PLAY")
+            ch:pygame.mixer.Channel = sound.play(fade_ms=0)
+            while ch.get_busy():
+                time.sleep(0.1)
+                #pygame.time.delay( int(duratin_sec * 1000) )
+            self._last_talk = time.time()
+            print("#PLAY")
         except:
             logger.exception('')
