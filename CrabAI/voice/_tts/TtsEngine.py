@@ -157,7 +157,7 @@ class TtsEngine:
         self.wave_queue:Queue = Queue()
         self.play_queue:Queue = Queue()
         self._last_talk:float = 0
-        self._stop_delay:float = 0.7
+        self._stop_delay:float = 0.2
         self._power_timeout:float = 5.0
         # 発声中のセリフのID
         self._talk_id: int = 0
@@ -183,12 +183,15 @@ class TtsEngine:
 
         # フェードイン用
         self.feed = create_tone( 32, time=0.4, volume=0.9, sample_rate=16000)
+        self.feed = 0.5 * np.sin( np.linspace(0, np.pi, int(16000*0.4)) ) # np.linspace(0.5, 0.0, num=int(16000*0.4) )
         self.feed_wave = audio_to_wave_bytes(self.feed, sample_rate=16000 )
         # 再生完了を同期するためのデータ
         self.sync_wave = audio_to_wave_bytes(np.zeros(1, dtype=np.float32), sample_rate=16000 )
         # 通知用の音声データ
-        self.sound_listen_in = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ce", sampling_rate=16000 ))), sample_rate=16000 )
-        self.sound_listen_out = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ec", sampling_rate=16000 ))), sample_rate=16000 )
+        self.sound_mute_in = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ce", sampling_rate=16000 ))), sample_rate=16000 )
+        self.sound_mute_out = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ec", sampling_rate=16000 ))), sample_rate=16000 )
+        self.sound_listen_in = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ee", sampling_rate=16000 ))), sample_rate=16000 )
+        self.sound_listen_out = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 cc", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound_error1 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t240v15 O3aa", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound_error2 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v15 O3aaa", sampling_rate=16000 ))), sample_rate=16000 )
 
@@ -321,7 +324,7 @@ class TtsEngine:
                 lines.insert(1, firstline[p+1:])
         # キューに追加する
         talk_id:int = self._talk_id
-        for text in TtsEngine.split_talk_text(text):
+        for text in lines:
             logger.info(f"[TTS] wave_queue.put {text}")
             self.wave_queue.put( (talk_id, text, emotion ) )
         # 処理スレッドを起動する
@@ -333,7 +336,8 @@ class TtsEngine:
         """ボイススレッド
         テキストキューからテキストを取得して音声に変換して発声キューへ送る
         """
-        logger.info(f"[TTS] thread start")
+        logger.info(f"[TTS] text_to_audio thread start")
+        last_time:float = time.time()
         while True:
             talk_id:int = -1
             text:str = None
@@ -341,19 +345,23 @@ class TtsEngine:
             with self.lock:
                 try:
                     talk_id, text, emotion = self.wave_queue.get_nowait()
+                    last_time = time.time()
                 except Exception as ex:
                     if not isinstance( ex, Empty ):
                         logger.exception(ex)
                     talk_id=-1
                     text = None
-                if text is None:
+                if text is None and (time.time()-last_time)>2.0:
                     self._running_future = None
-                    logger.info(f"[TTS] thread end")
+                    logger.info(f"[TTS] text_to_audio thread end")
                     return
+            if text is None:
+                time.sleep(0.2)
+                continue
             try:
                 if talk_id == self._talk_id: # cancelされてなければ
                     self._music_wakeup()
-                    logger.info(f"[TTS] text_to_audio {text}")
+                    logger.debug(f"[TTS] text_to_audio {text}")
                     # textから音声へ
                     audio_bytes, tts_model = self._text_to_audio( text, emotion )
                     self.play_queue.put( (talk_id,text,emotion,audio_bytes,tts_model) )
@@ -502,7 +510,7 @@ class TtsEngine:
 
     def _text_to_audio( self, text1: str, emotion:int = 0 ) -> bytes:
         if TtsEngine.EOT==text1:
-            return self.sound_listen_out,''
+            return self.sound_mute_out,''
         wave: bytes = None
         model:str = None
         text:str = TtsEngine.convert_blank( text1 )
@@ -600,11 +608,11 @@ class TtsEngine:
 
     def play_mute_in(self):
         logger.info("beep mute_in")
-        self._play_beep( self.sound_listen_in )
+        self._play_beep( self.sound_mute_in )
 
     def play_mute_out(self):
         logger.info("beep mute_out")
-        self._play_beep( self.sound_listen_out )
+        self._play_beep( self.sound_mute_out )
 
     def play_listen_in(self):
         logger.info("beep listen_in")

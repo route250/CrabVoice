@@ -130,7 +130,12 @@ class SttEngine(ShareParam):
     def tick_time(self, time_sec:float ):
         pass
 
-    def set_pause(self, *, in_talk=None, in_listen=None ):
+    def precheck_mute(self, *, in_talk=None, in_listen=None ):
+        if isinstance(self.src,MicSource):
+            return self.src.precheck_mute(in_talk=in_talk, in_listen=in_listen)
+        return False,False
+
+    def set_mute(self, *, in_talk=None, in_listen=None, check=False ):
         if isinstance(self.src,MicSource):
             return self.src.set_mute(in_talk=in_talk, in_listen=in_listen)
         return False,False
