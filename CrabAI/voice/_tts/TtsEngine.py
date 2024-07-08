@@ -157,6 +157,8 @@ class TtsEngine:
         self.wave_queue:Queue = Queue()
         self.play_queue:Queue = Queue()
         self._last_talk:float = 0
+        self._stop_delay:float = 0.7
+        self._power_timeout:float = 5.0
         # 発声中のセリフのID
         self._talk_id: int = 0
         # 音声エンジン選択
@@ -260,6 +262,13 @@ class TtsEngine:
     def cancel(self):
         self._talk_id += 1
 
+    def is_playing(self) ->bool:
+        if not self.wave_queue.empty() or not self.play_queue.empty():
+            return True
+        if self._running_future is not None or self._running_future2 is not None:
+            return True
+        return False
+
     def _get_voicevox_url( self ) ->str:
         if self._voicevox_url is None:
             self._voicevox_url = find_first_responsive_host(self._voicevox_list,self._voicevox_port)
@@ -301,15 +310,26 @@ class TtsEngine:
         return lines
 
     def add_talk(self, full_text:str, emotion:int = 0 ) -> None:
+        # テキストを行単位に分割する
+        lines:list[str] = TtsEngine.split_talk_text(full_text)
+        # 最初の再生の時だけ、先頭の単語を短くする
+        if not self.is_playing():
+            firstline:str = lines[0]
+            p:int = firstline.find('、')
+            if 1<p and p<len(firstline)-1:
+                lines[0] = firstline[:p+1]
+                lines.insert(1, firstline[p+1:])
+        # キューに追加する
         talk_id:int = self._talk_id
-        for text in TtsEngine.split_talk_text(full_text):
+        for text in TtsEngine.split_talk_text(text):
             logger.info(f"[TTS] wave_queue.put {text}")
             self.wave_queue.put( (talk_id, text, emotion ) )
+        # 処理スレッドを起動する
         with self.lock:
             if self._running_future is None:
-                self._running_future = self.submit_task(self.run_text_to_audio)
+                self._running_future = self.submit_task(self._th_run_text_to_audio)
     
-    def run_text_to_audio(self)->None:
+    def _th_run_text_to_audio(self)->None:
         """ボイススレッド
         テキストキューからテキストを取得して音声に変換して発声キューへ送る
         """
@@ -332,7 +352,7 @@ class TtsEngine:
                     return
             try:
                 logger.info(f"[TTS] text_to_audio {text}")
-                if talk_id == self._talk_id:
+                if talk_id == self._talk_id: # cancelされてなければ
                     # textから音声へ
                     audio_bytes, tts_model = self._text_to_audio( text, emotion )
                     self._add_audio( talk_id,text,emotion,audio_bytes,tts_model )
@@ -343,7 +363,7 @@ class TtsEngine:
         self.play_queue.put( (talk_id,text,emotion,audio_bytes,tts_model) )
         with self.lock:
             if self._running_future2 is None:
-                self._running_future2 = self.submit_task(self.run_talk)
+                self._running_future2 = self.submit_task(self._th_run_talk)
 
     @staticmethod
     def __penpenpen( text, default=" " ) ->str:
@@ -496,16 +516,8 @@ class TtsEngine:
             wave, model = self._text_to_audio_by_gtts( text, emotion )
         return wave,model
 
-    def is_playing(self) ->bool:
-        if not self.wave_queue.empty() or not self.play_queue.empty():
-            return True
-        if self._running_future is not None or self._running_future2 is not None:
-            return True
-        return False
-
-    def run_talk(self)->None:
-        start:bool = False
-        final:bool = False
+    def _th_run_talk(self)->None:
+        status:int = 0
         while True:
             talk_id:int = -1
             text:str = None
@@ -515,70 +527,87 @@ class TtsEngine:
             with self.lock:
                 try:
                     talk_id, text, emotion, audio, tts_model = self.play_queue.get_nowait()
-                    final = False
+                    status = 0
                 except Exception as ex:
                     if not isinstance( ex, Empty ):
                         logger.exception('')
                     talk_id=-1
                     text = None
                     audio = None
-            if text is None:
-                if not self.wave_queue.empty() or self._running_future is not None:
-                    final = False
-                elif not pygame.mixer.music.get_busy():
-                    if not final:
-                        logger.info(f"[TTS] play empty")
-                        final = True
-                        sync_buffer = BytesIO(self.sync_wave)
-                        sync_buffer.seek(0)
-                        pygame.mixer.music.load(sync_buffer)
-                        pygame.mixer.music.play() #
-                    else:
-                        logger.info(f"[TTS] play thread exit")
-                        with self.lock:
-                            self._running_future2 = None
-                        # 再生終了通知
-                        if self.start_call is not None:
-                            self.start_call( None, emotion, tts_model )
-                        return
+                    if not self.wave_queue.empty() or self._running_future is not None:
+                        status = 0
+                    elif not pygame.mixer.music.get_busy():
+                        if status == 0:
+                            status = 1
+                        elif status == 2:
+                            if (time.time()-self._last_talk) > self._stop_delay:
+                                self._running_future2 = None
+                                status = 3
+            if status == 1:
+                logger.info(f"[TTS] play empty")
+                sync_buffer = BytesIO(self.sync_wave)
+                sync_buffer.seek(0)
+                pygame.mixer.music.load(sync_buffer)
+                pygame.mixer.music.play() #
+                self._last_talk = time.time()
+                status = 2
                 time.sleep(0.2)
                 continue
+            elif status == 2:
+                time.sleep(0.2)
+                continue
+            elif status == 3:
+                logger.info(f"[TTS] play thread exit")
+                # 再生終了通知
+                if self.start_call is not None:
+                    self.start_call( None, emotion, tts_model )
+                return
+            elif talk_id != self._talk_id: # cancelされた
+                continue
+
             try:
-                if talk_id == self._talk_id:
-                    # 再生開始通知
-                    if self.start_call is not None:
-                        self.start_call( text, emotion, tts_model )
-                    # 再生処理
-                    if audio is not None:
-                        self._sound_init()
-                        audio_buffer = BytesIO(audio)
-                        audio_buffer.seek(0)
-                        if not pygame.mixer.music.get_busy():
-                            if (time.time()-self._last_talk)>5.0:
-                                logger.info(f"[TTS] wakeup play {text}")
-                                feed_buffer = BytesIO(self.feed_wave)
-                                feed_buffer.seek(0)
-                                pygame.mixer.music.load(feed_buffer)
-                                pygame.mixer.music.play()
-                                pygame.mixer.music.queue(audio_buffer)
-                            else:
-                                logger.info(f"[TTS] start play {text}")
-                                pygame.mixer.music.load(audio_buffer)
-                                pygame.mixer.music.play()
-                        else:
-                            logger.info(f"[TTS] queue play {text}")
+                # 再生開始通知
+                if self.start_call is not None:
+                    self.start_call( text, emotion, tts_model )
+                # 再生処理
+                if audio is not None:
+                    self._sound_init()
+                    audio_buffer = BytesIO(audio)
+                    audio_buffer.seek(0)
+                    if not pygame.mixer.music.get_busy():
+                        if (time.time()-self._last_talk)>self._power_timeout:
+                            # 最後の再生から一定時間すぎると、OSのオーディオがPowerOffになるみたい。
+                            # この状態から再生を始めると、最初の音がフェードインするので、最初の言葉が聞き取れない
+                            logger.info(f"[TTS] wakeup play {text}")
+                            # だから、最初にダミーの音を再生してフェードイン
+                            feed_buffer = BytesIO(self.feed_wave)
+                            feed_buffer.seek(0)
+                            pygame.mixer.music.load(feed_buffer)
+                            pygame.mixer.music.play()
+                            # その後で、音声を再生する
                             pygame.mixer.music.queue(audio_buffer)
+                        else:
+                            # 再生中でなければ、ロードして再生開始
+                            logger.info(f"[TTS] start play {text}")
+                            pygame.mixer.music.load(audio_buffer)
+                            pygame.mixer.music.play()
+                    else:
+                        # 前の音声が再生中なのでキューにいれる
+                        logger.info(f"[TTS] queue play {text}")
+                        pygame.mixer.music.queue(audio_buffer)
+                    self._last_talk = time.time()
+                # 再生終了待ち
+                if audio is not None:
+                    # 再生が完了するまで待機
+                    # おそらくバッファの関係で、再生完了の0.5秒前くらいにget_busy()がFalseになる
+                    while pygame.mixer.music.get_busy():
                         self._last_talk = time.time()
-                    # 再生終了待ち
-                    if audio is not None:
-                        while pygame.mixer.music.get_busy():
-                            if talk_id != self._talk_id:
-                                pygame.mixer.music.stop()
-                                logger.info(f"[TTS] play kill")
-                                break
-                            time.sleep(0.2)
-                        self._last_talk = time.time()
-                    
+                        if talk_id != self._talk_id: # キャンセルされた
+                            pygame.mixer.music.stop()
+                            logger.info(f"[TTS] play cancel")
+                            break
+                        time.sleep(0.2)
+
             except Exception as ex:
                 logger.exception('')
 
