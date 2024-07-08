@@ -351,19 +351,17 @@ class TtsEngine:
                     logger.info(f"[TTS] thread end")
                     return
             try:
-                logger.info(f"[TTS] text_to_audio {text}")
                 if talk_id == self._talk_id: # cancelされてなければ
+                    self._music_wakeup()
+                    logger.info(f"[TTS] text_to_audio {text}")
                     # textから音声へ
                     audio_bytes, tts_model = self._text_to_audio( text, emotion )
-                    self._add_audio( talk_id,text,emotion,audio_bytes,tts_model )
+                    self.play_queue.put( (talk_id,text,emotion,audio_bytes,tts_model) )
+                    with self.lock:
+                        if self._running_future2 is None:
+                            self._running_future2 = self.submit_task(self._th_run_talk)
             except Exception as ex:
                 logger.exception(ex)
-
-    def _add_audio( self, talk_id:int, text:str, emotion:int, audio_bytes: bytes, tts_model:str=None ) -> None:
-        self.play_queue.put( (talk_id,text,emotion,audio_bytes,tts_model) )
-        with self.lock:
-            if self._running_future2 is None:
-                self._running_future2 = self.submit_task(self._th_run_talk)
 
     @staticmethod
     def __penpenpen( text, default=" " ) ->str:
@@ -572,25 +570,14 @@ class TtsEngine:
                 # 再生処理
                 if audio is not None:
                     self._sound_init()
+                    self._music_wakeup()
                     audio_buffer = BytesIO(audio)
                     audio_buffer.seek(0)
                     if not pygame.mixer.music.get_busy():
-                        if (time.time()-self._last_talk)>self._power_timeout:
-                            # 最後の再生から一定時間すぎると、OSのオーディオがPowerOffになるみたい。
-                            # この状態から再生を始めると、最初の音がフェードインするので、最初の言葉が聞き取れない
-                            logger.info(f"[TTS] wakeup play {text}")
-                            # だから、最初にダミーの音を再生してフェードイン
-                            feed_buffer = BytesIO(self.feed_wave)
-                            feed_buffer.seek(0)
-                            pygame.mixer.music.load(feed_buffer)
-                            pygame.mixer.music.play()
-                            # その後で、音声を再生する
-                            pygame.mixer.music.queue(audio_buffer)
-                        else:
-                            # 再生中でなければ、ロードして再生開始
-                            logger.info(f"[TTS] start play {text}")
-                            pygame.mixer.music.load(audio_buffer)
-                            pygame.mixer.music.play()
+                        # 再生中でなければ、ロードして再生開始
+                        logger.info(f"[TTS] start play {text}")
+                        pygame.mixer.music.load(audio_buffer)
+                        pygame.mixer.music.play()
                     else:
                         # 前の音声が再生中なのでキューにいれる
                         logger.info(f"[TTS] queue play {text}")
@@ -651,18 +638,20 @@ class TtsEngine:
         except:
             logger.exception('')
 
-    def _play_voice(self, snd ):
+    def _music_wakeup(self):
         try:
+            # 最後の再生から一定時間すぎると、OSのオーディオがPowerOffになるみたい。
+            # この状態から再生を始めると、最初の音がフェードインするので、最初の言葉が聞き取れない
+            # だから、最初にダミーの音を再生してフェードイン中になにか再生する
             self._sound_init()
-            wb: BytesIO = BytesIO( snd )
-            wb.seek(0)
-            sound = pygame.mixer.Sound( wb )
-            print("#PLAY")
-            ch:pygame.mixer.Channel = sound.play(fade_ms=0)
-            while ch.get_busy():
-                time.sleep(0.1)
-                #pygame.time.delay( int(duratin_sec * 1000) )
-            self._last_talk = time.time()
-            print("#PLAY")
+            if pygame.mixer.music.get_busy():
+                self._last_talk = time.time()
+            elif (time.time()-self._last_talk)>self._power_timeout:
+                logger.info(f"[TTS] wakeup")
+                feed_buffer = BytesIO(self.feed_wave)
+                feed_buffer.seek(0)
+                pygame.mixer.music.load(feed_buffer)
+                pygame.mixer.music.play()
+                self._last_talk = time.time()
         except:
             logger.exception('')
