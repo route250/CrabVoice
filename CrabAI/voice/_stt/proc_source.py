@@ -227,6 +227,11 @@ class SourceBase:
             # print(f"[STT] in_listen {self.in_listen} -> {in_listen}")
             self.in_listen = in_listen
         after:bool = not self.in_listen or self.in_talk
+        # if after != before and not after:
+        #     stack = traceback.extract_stack()
+        #     filtered_stack = [frame for frame in stack if 'maeda/LLM/CrabVoice/' in frame.filename]
+        #     stack_trace = ''.join(traceback.format_list(filtered_stack))
+        #     logger.info(f"[STT] set_mute in_talk={in_talk} in_listen={in_listen}\n%s", stack_trace)
         return after, before
 
 class MicSource(SourceBase):

@@ -17,8 +17,10 @@ class VoiceTalkEngine(ShareParam):
     音声会話のためのエンジン。マイクから音声認識と、音声合成を行う
     """
     ST_STOPPED:int = 0
-    ST_TALK:int = 10
-    ST_TALK_END:int = 11
+    ST_TALK_ENTRY:int = 10
+    ST_TALK_START:int = 11
+    ST_TALK_END:int = 12
+    ST_TALK_EXIT:int = 13
     ST_LISTEN:int = 20
     ST_LISTEN_END: int = 21
 
@@ -78,6 +80,15 @@ class VoiceTalkEngine(ShareParam):
         for key,val in upd.items():
             self[key]=val
 
+    def get_speaker_id(self):
+        return self.speaker
+
+    def get_speaker_name(self):
+        return TtsEngine.id_to_name(self.speaker)
+
+    def get_speaker_gender(self):
+        return TtsEngine.id_to_gender(self.speaker)
+
     def _fn_callback(self, stat:int, *, listen_text=None, confidence=None, talk_text=None, talk_emotion=None, talk_model=None ):
         # if stat == VoiceTalkEngine.ST_LISTEN:
         #     self.play_listen_in()
@@ -94,9 +105,15 @@ class VoiceTalkEngine(ShareParam):
                 logger.debug( f"[VoiceTalkEngine] listen in {listen_text} {confidence}" )
             elif stat == VoiceTalkEngine.ST_LISTEN_END:
                 logger.debug( f"[VoiceTalkEngine] listen out {listen_text} {confidence} __EOT__" )
-            elif stat == VoiceTalkEngine.ST_TALK:
+            elif stat == VoiceTalkEngine.ST_TALK_ENTRY:
+                pass
+                # logger.debug( f"[VoiceTalkEngine] talk {talk_text}" )
+            elif stat == VoiceTalkEngine.ST_TALK_START:
                 logger.debug( f"[VoiceTalkEngine] talk {talk_text}" )
             elif stat == VoiceTalkEngine.ST_TALK_END:
+                pass
+                # logger.debug( f"[VoiceTalkEngine] talk {talk_text}" )
+            elif stat == VoiceTalkEngine.ST_TALK_EXIT:
                 logger.debug( f"[VoiceTalkEngine] talk END" )
 
     def load(self, *, stt=True, tts=True):
@@ -221,24 +238,31 @@ class VoiceTalkEngine(ShareParam):
             return
         self._fn_callback( s, listen_text=copy_texts, confidence=copy_confidence )
 
-    def _tts_callback(self, text:str, emotion:int, model:str):
+    def _tts_callback(self, text:str, x:int, emotion:int, model:str):
         """音声合成からの通知により、再生中は音声認識を止める"""
-        if text:
-            logger.debug( f"[TTS] tts_callback {text}")
-            self._status = VoiceTalkEngine.ST_TALK
+        if x<=0:
+            self._status = VoiceTalkEngine.ST_TALK_ENTRY
             self.set_mute( in_talk=True )
-            self._fn_callback( VoiceTalkEngine.ST_TALK, talk_text=text, talk_emotion=emotion, talk_model=model )
+            self._fn_callback( VoiceTalkEngine.ST_TALK_ENTRY, talk_text=text, talk_emotion=emotion, talk_model=model )
+        elif x==1:
+            pass
+        elif x==2:
+            logger.debug( f"[TTS] tts_callback {text}")
+            self._status = VoiceTalkEngine.ST_TALK_START
+            self._fn_callback( VoiceTalkEngine.ST_TALK_START, talk_text=text, talk_emotion=emotion, talk_model=model )
+        elif x==3:
+            pass
         else:
             logger.debug( f"[TTS] tts_callback stop")
             self._status = VoiceTalkEngine.ST_LISTEN
-            self._fn_callback( VoiceTalkEngine.ST_TALK_END, talk_text=None )
+            self._fn_callback( VoiceTalkEngine.ST_TALK_EXIT, talk_text=None )
             self.set_mute( in_talk=False )
 
     def set_mute(self, *, in_talk=None, in_listen=None ):
         if self.stt:
             after,before = self.stt.precheck_mute( in_talk=in_talk, in_listen=in_listen)
             if after != before and not after:
-                self.play_mute_out()
+                self.play_mute_out(wait=True)
             after,before = self.stt.set_mute( in_talk=in_talk, in_listen=in_listen)
             if after != before and after:
                 self.play_mute_in()
@@ -249,9 +273,9 @@ class VoiceTalkEngine(ShareParam):
         if self.tts is not None:
             self.tts.play_mute_in()
 
-    def play_mute_out(self):
+    def play_mute_out(self,wait=False):
         if self.tts is not None:
-            self.tts.play_mute_out()
+            self.tts.play_mute_out(wait=wait)
 
     def play_listen_in(self):
         if self.tts is not None:

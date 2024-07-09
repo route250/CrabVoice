@@ -29,104 +29,105 @@ logger = getLogger(__name__)
 
 class TtsEngine:
     EOT:str = "<|EOT|>"
+    # 男性はM 女性はF
     VoiceList = [
-        ( "VOICEVOX:四国めたん[ノーマル]",  2, 'ja_JP' ),
-        ( "VOICEVOX:四国めたん[あまあま]",  0, 'ja_JP' ),
-        ( "VOICEVOX:四国めたん[ツンツン]",  6, 'ja_JP' ),
-        ( "VOICEVOX:四国めたん[セクシー]",  4, 'ja_JP' ),
-        ( "VOICEVOX:四国めたん[ささやき]", 36, 'ja_JP' ),
-        ( "VOICEVOX:四国めたん[ヒソヒソ]", 37, 'ja_JP' ),
-        ( "VOICEVOX:ずんだもん[ノーマル]",  3, 'ja_JP' ),
-        ( "VOICEVOX:ずんだもん[あまあま]",  1, 'ja_JP' ),
-        ( "VOICEVOX:ずんだもん[ツンツン]",  7, 'ja_JP' ),
-        ( "VOICEVOX:ずんだもん[セクシー]",  5, 'ja_JP' ),
-        ( "VOICEVOX:ずんだもん[ささやき]", 22, 'ja_JP' ),
-        ( "VOICEVOX:ずんだもん[ヒソヒソ]", 38, 'ja_JP' ),
-        ( "VOICEVOX:ずんだもん[ヘロヘロ]", 75, 'ja_JP' ),
-        ( "VOICEVOX:ずんだもん[なみだめ]", 76, 'ja_JP' ),
-        ( "VOICEVOX:春日部つむぎ[ノーマル]",  8, 'ja_JP' ),
-        ( "VOICEVOX:雨晴はう[ノーマル]", 10, 'ja_JP' ),
-        ( "VOICEVOX:波音リツ[ノーマル]",  9, 'ja_JP' ),
-        ( "VOICEVOX:波音リツ[クイーン]", 65, 'ja_JP' ),
-        ( "VOICEVOX:玄野武宏[ノーマル]", 11, 'ja_JP' ),
-        ( "VOICEVOX:玄野武宏[喜び]", 39, 'ja_JP' ),
-        ( "VOICEVOX:玄野武宏[ツンギレ]", 40, 'ja_JP' ),
-        ( "VOICEVOX:玄野武宏[悲しみ]", 41, 'ja_JP' ),
-        ( "VOICEVOX:白上虎太郎[ふつう]", 12, 'ja_JP' ),
-        ( "VOICEVOX:白上虎太郎[わーい]", 32, 'ja_JP' ),
-        ( "VOICEVOX:白上虎太郎[びくびく]", 33, 'ja_JP' ),
-        ( "VOICEVOX:白上虎太郎[おこ]", 34, 'ja_JP' ),
-        ( "VOICEVOX:白上虎太郎[びえーん]", 35, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星[ノーマル]", 13, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星[熱血]", 81, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星[不機嫌]", 82, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星[喜び]", 83, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星[しっとり]", 84, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星[かなしみ]", 85, 'ja_JP' ),
-        ( "VOICEVOX:青山龍星[囁き]", 86, 'ja_JP' ),
-        ( "VOICEVOX:冥鳴ひまり[ノーマル]", 14, 'ja_JP' ),
-        ( "VOICEVOX:九州そら[ノーマル]", 16, 'ja_JP' ),
-        ( "VOICEVOX:九州そら[あまあま]", 15, 'ja_JP' ),
-        ( "VOICEVOX:九州そら[ツンツン]", 18, 'ja_JP' ),
-        ( "VOICEVOX:九州そら[セクシー]", 17, 'ja_JP' ),
-        ( "VOICEVOX:九州そら[ささやき]", 19, 'ja_JP' ),
-        ( "VOICEVOX:もち子さん[ノーマル]", 20, 'ja_JP' ),
-        ( "VOICEVOX:もち子さん[セクシー／あん子]", 66, 'ja_JP' ),
-        ( "VOICEVOX:もち子さん[泣き]", 77, 'ja_JP' ),
-        ( "VOICEVOX:もち子さん[怒り]", 78, 'ja_JP' ),
-        ( "VOICEVOX:もち子さん[喜び]", 79, 'ja_JP' ),
-        ( "VOICEVOX:もち子さん[のんびり]", 80, 'ja_JP' ),
-        ( "VOICEVOX:剣崎雌雄[ノーマル]", 21, 'ja_JP' ),
-        ( "VOICEVOX:WhiteCUL[ノーマル]", 23, 'ja_JP' ),
-        ( "VOICEVOX:WhiteCUL[たのしい]", 24, 'ja_JP' ),
-        ( "VOICEVOX:WhiteCUL[かなしい]", 25, 'ja_JP' ),
-        ( "VOICEVOX:WhiteCUL[びえーん]", 26, 'ja_JP' ),
-        ( "VOICEVOX:後鬼[人間ver.]", 27, 'ja_JP' ),
-        ( "VOICEVOX:後鬼[ぬいぐるみver.]", 28, 'ja_JP' ),
-        ( "VOICEVOX:No.7[ノーマル]", 29, 'ja_JP' ),
-        ( "VOICEVOX:No.7[アナウンス]", 30, 'ja_JP' ),
-        ( "VOICEVOX:No.7[読み聞かせ]", 31, 'ja_JP' ),
-        ( "VOICEVOX:ちび式じい[ノーマル]", 42, 'ja_JP' ),
-        ( "VOICEVOX:櫻歌ミコ[ノーマル]", 43, 'ja_JP' ),
-        ( "VOICEVOX:櫻歌ミコ[第二形態]", 44, 'ja_JP' ),
-        ( "VOICEVOX:櫻歌ミコ[ロリ]", 45, 'ja_JP' ),
-        ( "VOICEVOX:小夜/SAYO[ノーマル]", 46, 'ja_JP' ),
-        ( "VOICEVOX:ナースロボ＿タイプＴ[ノーマル]", 47, 'ja_JP' ),
-        ( "VOICEVOX:ナースロボ＿タイプＴ[楽々]", 48, 'ja_JP' ),
-        ( "VOICEVOX:ナースロボ＿タイプＴ[恐怖]", 49, 'ja_JP' ),
-        ( "VOICEVOX:ナースロボ＿タイプＴ[内緒話]", 50, 'ja_JP' ),
-        ( "VOICEVOX:†聖騎士 紅桜†[ノーマル]", 51, 'ja_JP' ),
-        ( "VOICEVOX:雀松朱司[ノーマル]", 52, 'ja_JP' ),
-        ( "VOICEVOX:麒ヶ島宗麟[ノーマル]", 53, 'ja_JP' ),
-        ( "VOICEVOX:春歌ナナ[ノーマル]", 54, 'ja_JP' ),
-        ( "VOICEVOX:猫使アル[ノーマル]", 55, 'ja_JP' ),
-        ( "VOICEVOX:猫使アル[おちつき]", 56, 'ja_JP' ),
-        ( "VOICEVOX:猫使アル[うきうき]", 57, 'ja_JP' ),
-        ( "VOICEVOX:猫使ビィ[ノーマル]", 58, 'ja_JP' ),
-        ( "VOICEVOX:猫使ビィ[おちつき]", 59, 'ja_JP' ),
-        ( "VOICEVOX:猫使ビィ[人見知り]", 60, 'ja_JP' ),
-        ( "VOICEVOX:中国うさぎ[ノーマル]", 61, 'ja_JP' ),
-        ( "VOICEVOX:中国うさぎ[おどろき]", 62, 'ja_JP' ),
-        ( "VOICEVOX:中国うさぎ[こわがり]", 63, 'ja_JP' ),
-        ( "VOICEVOX:中国うさぎ[へろへろ]", 64, 'ja_JP' ),
-        ( "VOICEVOX:栗田まろん[ノーマル]", 67, 'ja_JP' ),
-        ( "VOICEVOX:あいえるたん[ノーマル]", 68, 'ja_JP' ),
-        ( "VOICEVOX:満別花丸[ノーマル]", 69, 'ja_JP' ),
-        ( "VOICEVOX:満別花丸[元気]", 70, 'ja_JP' ),
-        ( "VOICEVOX:満別花丸[ささやき]", 71, 'ja_JP' ),
-        ( "VOICEVOX:満別花丸[ぶりっ子]", 72, 'ja_JP' ),
-        ( "VOICEVOX:満別花丸[ボーイ]", 73, 'ja_JP' ),
-        ( "VOICEVOX:琴詠ニア[ノーマル]", 74, 'ja_JP' ),
-        ( "OpenAI:alloy", 1001, 'ja_JP' ),
-        ( "OpenAI:echo", 1002, 'ja_JP' ),
-        ( "OpenAI:fable", 1003, 'ja_JP' ),
-        ( "OpenAI:onyx", 1004, 'ja_JP' ), # 男性っぽい
-        ( "OpenAI:nova", 1005, 'ja_JP' ), # 女性っぽい
-        ( "OpenAI:shimmer", 1006, 'ja_JP' ), # 女性ぽい
-        ( "gTTS:[ja_JP]", 2000, 'ja_JP' ),
-        ( "gTTS:[en_US]", 2001, 'en_US' ),
-        ( "gTTS:[en_GB]", 2002, 'en_GB' ),
-        ( "gTTS:[fr_FR]", 2003, 'fr_FR' ),
+        ( "VOICEVOX:四国めたん[ノーマル]",  2, 'ja_JP', 'F' ),
+        ( "VOICEVOX:四国めたん[あまあま]",  0, 'ja_JP', 'F' ),
+        ( "VOICEVOX:四国めたん[ツンツン]",  6, 'ja_JP', 'F' ),
+        ( "VOICEVOX:四国めたん[セクシー]",  4, 'ja_JP', 'F' ),
+        ( "VOICEVOX:四国めたん[ささやき]", 36, 'ja_JP', 'F' ),
+        ( "VOICEVOX:四国めたん[ヒソヒソ]", 37, 'ja_JP', 'F' ),
+        ( "VOICEVOX:ずんだもん[ノーマル]",  3, 'ja_JP', 'F' ),
+        ( "VOICEVOX:ずんだもん[あまあま]",  1, 'ja_JP', 'F' ),
+        ( "VOICEVOX:ずんだもん[ツンツン]",  7, 'ja_JP', 'F' ),
+        ( "VOICEVOX:ずんだもん[セクシー]",  5, 'ja_JP', 'F' ),
+        ( "VOICEVOX:ずんだもん[ささやき]", 22, 'ja_JP', 'F' ),
+        ( "VOICEVOX:ずんだもん[ヒソヒソ]", 38, 'ja_JP', 'F' ),
+        ( "VOICEVOX:ずんだもん[ヘロヘロ]", 75, 'ja_JP', 'F' ),
+        ( "VOICEVOX:ずんだもん[なみだめ]", 76, 'ja_JP', 'F' ),
+        ( "VOICEVOX:春日部つむぎ[ノーマル]",  8, 'ja_JP', 'F' ),
+        ( "VOICEVOX:雨晴はう[ノーマル]",  10, 'ja_JP', 'F' ),
+        ( "VOICEVOX:波音リツ[ノーマル]",   9, 'ja_JP', 'F' ),
+        ( "VOICEVOX:波音リツ[クイーン]",  65, 'ja_JP', 'F' ),
+        ( "VOICEVOX:玄野武宏[ノーマル]",  11, 'ja_JP', 'M' ),
+        ( "VOICEVOX:玄野武宏[喜び]",     39, 'ja_JP', 'M' ),
+        ( "VOICEVOX:玄野武宏[ツンギレ]",  40, 'ja_JP', 'M' ),
+        ( "VOICEVOX:玄野武宏[悲しみ]",   41, 'ja_JP', 'M' ),
+        ( "VOICEVOX:白上虎太郎[ふつう]",  12, 'ja_JP', 'M' ),
+        ( "VOICEVOX:白上虎太郎[わーい]",  32, 'ja_JP', 'M' ),
+        ( "VOICEVOX:白上虎太郎[びくびく]", 33, 'ja_JP', 'M' ),
+        ( "VOICEVOX:白上虎太郎[おこ]",   34, 'ja_JP', 'M' ),
+        ( "VOICEVOX:白上虎太郎[びえーん]", 35, 'ja_JP', 'M' ),
+        ( "VOICEVOX:青山龍星[ノーマル]",  13, 'ja_JP', 'M' ),
+        ( "VOICEVOX:青山龍星[熱血]",    81, 'ja_JP', 'M' ),
+        ( "VOICEVOX:青山龍星[不機嫌]",   82, 'ja_JP', 'M' ),
+        ( "VOICEVOX:青山龍星[喜び]",    83, 'ja_JP', 'M' ),
+        ( "VOICEVOX:青山龍星[しっとり]",   84, 'ja_JP', 'M' ),
+        ( "VOICEVOX:青山龍星[かなしみ]",   85, 'ja_JP', 'M' ),
+        ( "VOICEVOX:青山龍星[囁き]",    86, 'ja_JP', 'M' ),
+        ( "VOICEVOX:冥鳴ひまり[ノーマル]", 14, 'ja_JP', 'F' ),
+        ( "VOICEVOX:九州そら[ノーマル]", 16, 'ja_JP', 'F' ),
+        ( "VOICEVOX:九州そら[あまあま]", 15, 'ja_JP', 'F' ),
+        ( "VOICEVOX:九州そら[ツンツン]", 18, 'ja_JP', 'F' ),
+        ( "VOICEVOX:九州そら[セクシー]", 17, 'ja_JP', 'F' ),
+        ( "VOICEVOX:九州そら[ささやき]", 19, 'ja_JP', 'F' ),
+        ( "VOICEVOX:もち子さん[ノーマル]", 20, 'ja_JP', 'F' ),
+        ( "VOICEVOX:もち子さん[セクシー／あん子]", 66, 'ja_JP', 'F' ),
+        ( "VOICEVOX:もち子さん[泣き]", 77, 'ja_JP', 'F' ),
+        ( "VOICEVOX:もち子さん[怒り]", 78, 'ja_JP', 'F' ),
+        ( "VOICEVOX:もち子さん[喜び]", 79, 'ja_JP', 'F' ),
+        ( "VOICEVOX:もち子さん[のんびり]", 80, 'ja_JP', 'F' ),
+        ( "VOICEVOX:剣崎雌雄[ノーマル]", 21, 'ja_JP', 'M' ),
+        ( "VOICEVOX:WhiteCUL[ノーマル]", 23, 'ja_JP', 'F' ),
+        ( "VOICEVOX:WhiteCUL[たのしい]", 24, 'ja_JP', 'F' ),
+        ( "VOICEVOX:WhiteCUL[かなしい]", 25, 'ja_JP', 'F' ),
+        ( "VOICEVOX:WhiteCUL[びえーん]", 26, 'ja_JP', 'F' ),
+        ( "VOICEVOX:後鬼[人間ver.]", 27, 'ja_JP', 'M' ),
+        ( "VOICEVOX:後鬼[ぬいぐるみver.]", 28, 'ja_JP', 'M' ),
+        ( "VOICEVOX:No.7[ノーマル]",  29, 'ja_JP', 'F' ),
+        ( "VOICEVOX:No.7[アナウンス]", 30, 'ja_JP', 'F' ),
+        ( "VOICEVOX:No.7[読み聞かせ]", 31, 'ja_JP', 'F' ),
+        ( "VOICEVOX:ちび式じい[ノーマル]", 42, 'ja_JP', 'M' ),
+        ( "VOICEVOX:櫻歌ミコ[ノーマル]", 43, 'ja_JP', 'F' ),
+        ( "VOICEVOX:櫻歌ミコ[第二形態]", 44, 'ja_JP', 'F' ),
+        ( "VOICEVOX:櫻歌ミコ[ロリ]",    45, 'ja_JP', 'F' ),
+        ( "VOICEVOX:小夜/SAYO[ノーマル]", 46, 'ja_JP', 'F' ),
+        ( "VOICEVOX:ナースロボ＿タイプＴ[ノーマル]", 47, 'ja_JP', 'F' ),
+        ( "VOICEVOX:ナースロボ＿タイプＴ[楽々]", 48, 'ja_JP', 'F' ),
+        ( "VOICEVOX:ナースロボ＿タイプＴ[恐怖]", 49, 'ja_JP', 'F' ),
+        ( "VOICEVOX:ナースロボ＿タイプＴ[内緒話]", 50, 'ja_JP', 'F' ),
+        ( "VOICEVOX:†聖騎士 紅桜†[ノーマル]", 51, 'ja_JP', 'M' ),
+        ( "VOICEVOX:雀松朱司[ノーマル]", 52, 'ja_JP', 'M' ),
+        ( "VOICEVOX:麒ヶ島宗麟[ノーマル]", 53, 'ja_JP', 'M' ),
+        ( "VOICEVOX:春歌ナナ[ノーマル]", 54, 'ja_JP', 'F' ),
+        ( "VOICEVOX:猫使アル[ノーマル]", 55, 'ja_JP', 'F' ),
+        ( "VOICEVOX:猫使アル[おちつき]", 56, 'ja_JP', 'F' ),
+        ( "VOICEVOX:猫使アル[うきうき]", 57, 'ja_JP', 'F' ),
+        ( "VOICEVOX:猫使ビィ[ノーマル]", 58, 'ja_JP', 'F' ),
+        ( "VOICEVOX:猫使ビィ[おちつき]", 59, 'ja_JP', 'F' ),
+        ( "VOICEVOX:猫使ビィ[人見知り]", 60, 'ja_JP', 'F' ),
+        ( "VOICEVOX:中国うさぎ[ノーマル]", 61, 'ja_JP', 'F' ),
+        ( "VOICEVOX:中国うさぎ[おどろき]", 62, 'ja_JP', 'F' ),
+        ( "VOICEVOX:中国うさぎ[こわがり]", 63, 'ja_JP', 'F' ),
+        ( "VOICEVOX:中国うさぎ[へろへろ]", 64, 'ja_JP', 'F' ),
+        ( "VOICEVOX:栗田まろん[ノーマル]", 67, 'ja_JP', 'F' ),
+        ( "VOICEVOX:あいえるたん[ノーマル]", 68, 'ja_JP', 'F' ),
+        ( "VOICEVOX:満別花丸[ノーマル]", 69, 'ja_JP', 'F' ),
+        ( "VOICEVOX:満別花丸[元気]", 70, 'ja_JP', 'F' ),
+        ( "VOICEVOX:満別花丸[ささやき]", 71, 'ja_JP', 'F' ),
+        ( "VOICEVOX:満別花丸[ぶりっ子]", 72, 'ja_JP', 'F' ),
+        ( "VOICEVOX:満別花丸[ボーイ]", 73, 'ja_JP', 'F' ),
+        ( "VOICEVOX:琴詠ニア[ノーマル]", 74, 'ja_JP', 'F' ),
+        ( "OpenAI:alloy", 1001, 'ja_JP', 'X' ),
+        ( "OpenAI:echo", 1002, 'ja_JP', 'X' ),
+        ( "OpenAI:fable", 1003, 'ja_JP', 'X' ),
+        ( "OpenAI:onyx", 1004, 'ja_JP', 'M' ), # 男性っぽい
+        ( "OpenAI:nova", 1005, 'ja_JP', 'F' ), # 女性っぽい
+        ( "OpenAI:shimmer", 1006, 'ja_JP', 'F' ), # 女性ぽい
+        ( "gTTS:[ja_JP]", 2000, 'ja_JP', 'X' ),
+        ( "gTTS:[en_US]", 2001, 'en_US', 'X' ),
+        ( "gTTS:[en_GB]", 2002, 'en_GB', 'X' ),
+        ( "gTTS:[fr_FR]", 2003, 'fr_FR', 'X' ),
     ]
 
     @staticmethod
@@ -144,6 +145,11 @@ class TtsEngine:
         voice = TtsEngine.id_to_model( idx )
         lang = voice[2]
         return lang if lang else 'ja_JP'
+
+    def id_to_gender( idx:int ) -> str:
+        voice = TtsEngine.id_to_model( idx )
+        gender = voice[3]
+        return gender if gender else 'X'
 
     @staticmethod
     def load_default( conf:ShareParam ):
@@ -242,9 +248,9 @@ class TtsEngine:
         try:
             if not self.pygame_init:
                 logger.info(f"[PyGame]init")
-                pygame.mixer.pre_init(16000,-16,1,10240)
+                #pygame.mixer.pre_init(16000,-16,1,10240)
                 pygame.mixer.quit()
-                pygame.mixer.init()
+                pygame.mixer.init(16000,-16,1,4096)
                 self.pygame_init = True
         except:
             logger.exception("can not reset pygame")
@@ -327,6 +333,8 @@ class TtsEngine:
         for text in lines:
             logger.info(f"[TTS] wave_queue.put {text}")
             self.wave_queue.put( (talk_id, text, emotion ) )
+            if self.start_call is not None:
+                self.start_call( text, 0, emotion, None )
         # 処理スレッドを起動する
         with self.lock:
             if self._running_future is None:
@@ -566,7 +574,7 @@ class TtsEngine:
                 logger.info(f"[TTS] play thread exit")
                 # 再生終了通知
                 if self.start_call is not None:
-                    self.start_call( None, emotion, tts_model )
+                    self.start_call( None, 9, emotion, tts_model )
                 return
             elif talk_id != self._talk_id: # cancelされた
                 continue
@@ -574,7 +582,7 @@ class TtsEngine:
             try:
                 # 再生開始通知
                 if self.start_call is not None:
-                    self.start_call( text, emotion, tts_model )
+                    self.start_call( text, 2, emotion, tts_model )
                 # 再生処理
                 if audio is not None:
                     self._sound_init()
@@ -602,6 +610,9 @@ class TtsEngine:
                             logger.info(f"[TTS] play cancel")
                             break
                         time.sleep(0.2)
+                # 再生完了通知
+                if self.start_call is not None:
+                    self.start_call( text, 3, emotion, tts_model )
 
             except Exception as ex:
                 logger.exception('')
@@ -610,9 +621,9 @@ class TtsEngine:
         logger.info("beep mute_in")
         self._play_beep( self.sound_mute_in )
 
-    def play_mute_out(self):
+    def play_mute_out(self, *, wait=False):
         logger.info("beep mute_out")
-        self._play_beep( self.sound_mute_out )
+        self._play_beep( self.sound_mute_out, wait=wait )
 
     def play_listen_in(self):
         logger.info("beep listen_in")
@@ -630,7 +641,7 @@ class TtsEngine:
         logger.info("beep error2")
         self._play_beep( self.sound_error2 )
 
-    def _play_beep(self, snd ):
+    def _play_beep(self, snd, *, wait=False ):
         try:
             self._sound_init()
             while self.beep_ch:
@@ -642,6 +653,13 @@ class TtsEngine:
             sound = pygame.mixer.Sound( wb )
             self.beep_ch.append( sound.play(fade_ms=0) )
             #pygame.time.delay( int(duratin_sec * 1000) )
+            self._last_talk = time.time()
+            if wait:
+                while self.beep_ch:
+                    ch:pygame.mixer.Channel = self.beep_ch.pop(0)
+                    while ch.get_busy():
+                        pygame.time.delay(200)
+                pygame.time.delay(200)
             self._last_talk = time.time()
         except:
             logger.exception('')
