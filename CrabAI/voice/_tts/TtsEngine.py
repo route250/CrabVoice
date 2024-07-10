@@ -167,6 +167,7 @@ class TtsEngine:
         self._power_timeout:float = 5.0
         # 発声中のセリフのID
         self._talk_id: int = 0
+        self._talk_seq: int = 0
         # 音声エンジン選択
         self.speaker = speaker
         # コールバック
@@ -270,6 +271,7 @@ class TtsEngine:
 
     def cancel(self):
         self._talk_id += 1
+        self._talk_seq = 0
 
     def is_playing(self) ->bool:
         if not self.wave_queue.empty() or not self.play_queue.empty():
@@ -332,9 +334,10 @@ class TtsEngine:
         talk_id:int = self._talk_id
         for text in lines:
             logger.info(f"[TTS] wave_queue.put {text}")
-            self.wave_queue.put( (talk_id, text, emotion ) )
+            self.wave_queue.put( (talk_id, self._talk_seq, text, emotion ) )
             if self.start_call is not None:
-                self.start_call( text, 0, emotion, None )
+                self.start_call( talk_id, self._talk_seq, text, 0, emotion, None )
+            self._talk_seq += 1
         # 処理スレッドを起動する
         with self.lock:
             if self._running_future is None:
@@ -352,7 +355,7 @@ class TtsEngine:
             emotion:int = -1
             with self.lock:
                 try:
-                    talk_id, text, emotion = self.wave_queue.get_nowait()
+                    talk_id, seq, text, emotion = self.wave_queue.get_nowait()
                     last_time = time.time()
                 except Exception as ex:
                     if not isinstance( ex, Empty ):
@@ -372,7 +375,7 @@ class TtsEngine:
                     logger.debug(f"[TTS] text_to_audio {text}")
                     # textから音声へ
                     audio_bytes, tts_model = self._text_to_audio( text, emotion )
-                    self.play_queue.put( (talk_id,text,emotion,audio_bytes,tts_model) )
+                    self.play_queue.put( (talk_id,seq,text,emotion,audio_bytes,tts_model) )
                     with self.lock:
                         if self._running_future2 is None:
                             self._running_future2 = self.submit_task(self._th_run_talk)
@@ -540,7 +543,7 @@ class TtsEngine:
             tts_model:str = None
             with self.lock:
                 try:
-                    talk_id, text, emotion, audio, tts_model = self.play_queue.get_nowait()
+                    talk_id, seq, text, emotion, audio, tts_model = self.play_queue.get_nowait()
                     status = 0
                 except Exception as ex:
                     if not isinstance( ex, Empty ):
@@ -574,7 +577,7 @@ class TtsEngine:
                 logger.info(f"[TTS] play thread exit")
                 # 再生終了通知
                 if self.start_call is not None:
-                    self.start_call( None, 9, emotion, tts_model )
+                    self.start_call( talk_id, -1, None, 9, emotion, tts_model )
                 return
             elif talk_id != self._talk_id: # cancelされた
                 continue
@@ -582,7 +585,7 @@ class TtsEngine:
             try:
                 # 再生開始通知
                 if self.start_call is not None:
-                    self.start_call( text, 2, emotion, tts_model )
+                    self.start_call( talk_id, seq, text, 2, emotion, tts_model )
                 # 再生処理
                 if audio is not None:
                     self._sound_init()
@@ -612,7 +615,7 @@ class TtsEngine:
                         time.sleep(0.2)
                 # 再生完了通知
                 if self.start_call is not None:
-                    self.start_call( text, 3, emotion, tts_model )
+                    self.start_call( talk_id, seq, text, 3, emotion, tts_model )
 
             except Exception as ex:
                 logger.exception('')

@@ -89,7 +89,7 @@ class VoiceTalkEngine(ShareParam):
     def get_speaker_gender(self):
         return TtsEngine.id_to_gender(self.speaker)
 
-    def _fn_callback(self, stat:int, *, listen_text=None, confidence=None, talk_text=None, talk_emotion=None, talk_model=None ):
+    def _fn_callback(self, stat:int, *, listen_text=None, confidence=None, talk_id=None, seq=None, talk_text=None, talk_emotion=None, talk_model=None ):
         # if stat == VoiceTalkEngine.ST_LISTEN:
         #     self.play_listen_in()
         # elif stat == VoiceTalkEngine.ST_LISTEN_END:
@@ -97,7 +97,7 @@ class VoiceTalkEngine(ShareParam):
 
         if self._callback is not None:
             try:
-                self._callback( stat, listen_text=listen_text, confidence=None, talk_text=talk_text, talk_emotion=talk_emotion, talk_model=talk_model )
+                self._callback( stat, listen_text=listen_text, confidence=None, talk_id=talk_id, seq=seq, talk_text=talk_text, talk_emotion=talk_emotion, talk_model=talk_model )
             except:
                 logger.exception('')
         else:
@@ -238,24 +238,26 @@ class VoiceTalkEngine(ShareParam):
             return
         self._fn_callback( s, listen_text=copy_texts, confidence=copy_confidence )
 
-    def _tts_callback(self, text:str, x:int, emotion:int, model:str):
+    def _tts_callback(self, talk_id:int, seq:int, text:str, x:int, emotion:int, model:str):
         """音声合成からの通知により、再生中は音声認識を止める"""
         if x<=0:
             self._status = VoiceTalkEngine.ST_TALK_ENTRY
             self.set_mute( in_talk=True )
-            self._fn_callback( VoiceTalkEngine.ST_TALK_ENTRY, talk_text=text, talk_emotion=emotion, talk_model=model )
+            self._fn_callback( VoiceTalkEngine.ST_TALK_ENTRY, talk_id=talk_id, seq=seq, talk_text=text, talk_emotion=emotion, talk_model=model )
         elif x==1:
             pass
         elif x==2:
             logger.debug( f"[TTS] tts_callback {text}")
             self._status = VoiceTalkEngine.ST_TALK_START
-            self._fn_callback( VoiceTalkEngine.ST_TALK_START, talk_text=text, talk_emotion=emotion, talk_model=model )
+            self._fn_callback( VoiceTalkEngine.ST_TALK_START, talk_id=talk_id, seq=seq, talk_text=text, talk_emotion=emotion, talk_model=model )
         elif x==3:
-            pass
+            logger.debug( f"[TTS] tts_callback {text}")
+            self._status = VoiceTalkEngine.ST_TALK_END
+            self._fn_callback( VoiceTalkEngine.ST_TALK_END, talk_id=talk_id, seq=seq, talk_text=text, talk_emotion=emotion, talk_model=model )
         else:
             logger.debug( f"[TTS] tts_callback stop")
             self._status = VoiceTalkEngine.ST_LISTEN
-            self._fn_callback( VoiceTalkEngine.ST_TALK_EXIT, talk_text=None )
+            self._fn_callback( VoiceTalkEngine.ST_TALK_EXIT, talk_id=talk_id, talk_text=None )
             self.set_mute( in_talk=False )
 
     def set_mute(self, *, in_talk=None, in_listen=None ):
@@ -301,12 +303,15 @@ class VoiceTalkEngine(ShareParam):
         else:
             print( f"[TTS]add_talk {text}" )
 
+    def sep_talk(self):
+        self.tts.cancel()
+
     def _save_audio(self,stt_data:SttData):
         try:
             if self.save_path is not None and os.path.isdir(self.save_path):
                 max_vad = max(stt_data['vad'])
-                if max_vad>0.2:
-                    logger.info( f"[DUMP] {stt_data}")
+                if max_vad>0.5:
+                    logger.info( f"[DUMP] {max_vad} {stt_data}")
                     dt = datetime.datetime.now()
                     dir = os.path.join( self.save_path, dt.strftime("%Y%m%d") )
                     os.makedirs(dir,exist_ok=True)
