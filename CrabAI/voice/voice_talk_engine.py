@@ -39,6 +39,9 @@ class VoiceTalkEngine(ShareParam):
         self.text_stat=0
         self.th:Thread = None
         self.stt:SttEngine = None
+        self.voice_id_dict:dict[float,int] = {}
+        self.stt_id:int = -1
+        self.stt_seq_count:dict[float,str] = {}
         self.tts:TtsEngine = None
         self.save_path:str = None
 
@@ -200,6 +203,8 @@ class VoiceTalkEngine(ShareParam):
         copy_texts = []
         copy_confidence = 1.0
         s = -1
+        stt_id:int = self.stt_id
+        seq:int = -1
         if SttData.Start==typ:
             logger.info( f"[STT] {start_sec:.3f} - {end_sec:.3f} {stat} START")
             s = VoiceTalkEngine.ST_LISTEN
@@ -212,11 +217,17 @@ class VoiceTalkEngine(ShareParam):
             logger.info( f"[STT] {start_sec:.3f} - {end_sec:.3f} {stat} {texts} {confidence}")
             s = VoiceTalkEngine.ST_LISTEN
             with self.text_lock:
+                if len(self.stt_seq_count)==0:
+                    stt_id = self.stt_id = self.voice_id_dict[start_sec] = len(self.voice_id_dict)
+                seq = self.stt_seq_count.get(start_sec)
+                if seq is None:
+                    seq = self.stt_seq_count[start_sec] = len(self.stt_seq_count)
                 if texts is not None and len(texts)>0:
                     self.text_buf.append(texts)
                 copy_texts = [ t for t in self.text_buf]
                 self.text_stat = 2
             copy_confidence = self.text_confidence = confidence
+                
         elif SttData.Term==typ:
             with self.text_lock:
                 if texts is not None and len(texts)>0:
@@ -225,6 +236,7 @@ class VoiceTalkEngine(ShareParam):
                 if self.text_stat == 3 or self.text_stat == 0:
                     return
                 self.text_stat = 3
+                self.stt_seq_count = {}
             logger.info( f"[STT] {start_sec:.3f} - {end_sec:.3f} {stat} {texts} {confidence} EOT")
             s = VoiceTalkEngine.ST_LISTEN_END
             copy_confidence = self.text_confidence = confidence
@@ -236,28 +248,30 @@ class VoiceTalkEngine(ShareParam):
         else:
             logger.info( f"[STT] {start_sec:.3f} - {end_sec:.3f} {stat} {texts} {confidence} EOT")
             return
-        self._fn_callback( s, listen_text=copy_texts, confidence=copy_confidence )
+        self._fn_callback( s, talk_id=stt_id, seq=seq, listen_text=texts, confidence=copy_confidence )
 
     def _tts_callback(self, talk_id:int, seq:int, text:str, x:int, emotion:int, model:str):
-        """音声合成からの通知により、再生中は音声認識を止める"""
+        voice_id = self.voice_id_dict.get(talk_id)
+        if voice_id is None:
+            voice_id = self.voice_id_dict[talk_id] = len(self.voice_id_dict)
         if x<=0:
             self._status = VoiceTalkEngine.ST_TALK_ENTRY
             self.set_mute( in_talk=True )
-            self._fn_callback( VoiceTalkEngine.ST_TALK_ENTRY, talk_id=talk_id, seq=seq, talk_text=text, talk_emotion=emotion, talk_model=model )
+            self._fn_callback( VoiceTalkEngine.ST_TALK_ENTRY, talk_id=voice_id, seq=seq, talk_text=text, talk_emotion=emotion, talk_model=model )
         elif x==1:
             pass
         elif x==2:
             logger.debug( f"[TTS] tts_callback {text}")
             self._status = VoiceTalkEngine.ST_TALK_START
-            self._fn_callback( VoiceTalkEngine.ST_TALK_START, talk_id=talk_id, seq=seq, talk_text=text, talk_emotion=emotion, talk_model=model )
+            self._fn_callback( VoiceTalkEngine.ST_TALK_START, talk_id=voice_id, seq=seq, talk_text=text, talk_emotion=emotion, talk_model=model )
         elif x==3:
             logger.debug( f"[TTS] tts_callback {text}")
             self._status = VoiceTalkEngine.ST_TALK_END
-            self._fn_callback( VoiceTalkEngine.ST_TALK_END, talk_id=talk_id, seq=seq, talk_text=text, talk_emotion=emotion, talk_model=model )
+            self._fn_callback( VoiceTalkEngine.ST_TALK_END, talk_id=voice_id, seq=seq, talk_text=text, talk_emotion=emotion, talk_model=model )
         else:
             logger.debug( f"[TTS] tts_callback stop")
             self._status = VoiceTalkEngine.ST_LISTEN
-            self._fn_callback( VoiceTalkEngine.ST_TALK_EXIT, talk_id=talk_id, talk_text=None )
+            self._fn_callback( VoiceTalkEngine.ST_TALK_EXIT, talk_id=voice_id, talk_text=None )
             self.set_mute( in_talk=False )
 
     def set_mute(self, *, in_talk=None, in_listen=None ):
