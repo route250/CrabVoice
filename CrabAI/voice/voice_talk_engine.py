@@ -44,6 +44,7 @@ class VoiceTalkEngine(ShareParam):
         self.stt_seq_count:dict[float,str] = {}
         self.tts:TtsEngine = None
         self.save_path:str = None
+        self._input_text:list[str] = []
 
     def __getitem__(self,key):
         if key=="save_path":
@@ -172,6 +173,10 @@ class VoiceTalkEngine(ShareParam):
         if self.stt is not None:
             self.stt.tick_time(time_sec)
 
+    def add_input_text(self,message):
+        with self.text_lock:
+            self._input_text.append( message )
+
     def get_recognized_text(self):
         """音声認識による入力"""
         self.set_mute( in_listen=True )
@@ -188,6 +193,16 @@ class VoiceTalkEngine(ShareParam):
                             self.set_mute( in_listen=False )
                             return text, confs
                     else:
+                        if self._input_text and len(self.stt_seq_count)==0:
+                            start_sec = time.time()
+                            stt_id = self.stt_id = self.voice_id_dict[start_sec] = len(self.voice_id_dict)
+                            seq = 0
+                            texts = ' '.join(self._input_text)
+                            self._input_text = []
+                            self.set_mute( in_listen=False )
+                            for s in ( VoiceTalkEngine.ST_LISTEN, VoiceTalkEngine.ST_LISTEN_END):
+                                self._fn_callback( s, talk_id=stt_id, seq=seq, listen_text=texts, confidence=1.0 )
+                            return texts, 1.0
                         self.text_lock.wait(0.5)
             self.tick_time( time.time() )
 
