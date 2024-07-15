@@ -23,6 +23,7 @@ from ...net.net_utils import find_first_responsive_host
 from ..voice_utils import mml_to_audio, audio_to_wave_bytes, create_tone
 from ..translate import convert_to_katakana, convert_kuten
 from CrabAI.vmp import ShareParam
+from CrabAI.voice.voice_state import VoiceState
 
 from logging import getLogger
 logger = getLogger(__name__)
@@ -172,8 +173,8 @@ class TtsEngine:
         self.speaker = speaker
         # コールバック
         self.executor = None
-        self.submit_call = submit_task # スレッドプールへの投入
-        self.start_call = talk_callback # 発声開始と完了を通知する
+        self._submit_call = submit_task # スレッドプールへの投入
+        self._start_call = talk_callback # 発声開始と完了を通知する
         # pygame初期化済みフラグ
         self.pygame_init:bool = False
         # beep
@@ -201,6 +202,10 @@ class TtsEngine:
         self.sound_listen_out = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 cc", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound_error1 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t240v15 O3aa", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound_error2 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v15 O3aaa", sampling_rate=16000 ))), sample_rate=16000 )
+
+    def _fn_callback(self, stat:int, talk_id:int, seq:int, content:str, emotion:int, model:str):
+        if self._start_call is not None:
+            self._start_call( stat, talk_id, seq, content, emotion, model )
 
     def __getitem__(self,key):
         if 'speaker.id'==key:
@@ -262,9 +267,9 @@ class TtsEngine:
         #     pygame.mixer.init()
         #     self.pygame_init = True
 
-    def submit_task(self, func ) -> Future:
-        if self.submit_call is not None:
-            return self.submit_call(func)
+    def _fn_submit_task(self, func ) -> Future:
+        if self._submit_call is not None:
+            return self._submit_call(func)
         if self.executor is None:
             self.executor:ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
         return self.executor.submit( func )
@@ -335,13 +340,12 @@ class TtsEngine:
         for text in lines:
             logger.info(f"[TTS] wave_queue.put {text}")
             self.wave_queue.put( (talk_id, self._talk_seq, text, emotion ) )
-            if self.start_call is not None:
-                self.start_call( talk_id, self._talk_seq, text, 0, emotion, None )
+            self._fn_callback( VoiceState.ST_TALK_ENTRY, talk_id, self._talk_seq, text, emotion, None )
             self._talk_seq += 1
         # 処理スレッドを起動する
         with self.lock:
             if self._running_future is None:
-                self._running_future = self.submit_task(self._th_run_text_to_audio)
+                self._running_future = self._fn_submit_task(self._th_run_text_to_audio)
     
     def _th_run_text_to_audio(self)->None:
         """ボイススレッド
@@ -374,11 +378,13 @@ class TtsEngine:
                     self._music_wakeup()
                     logger.debug(f"[TTS] text_to_audio {text}")
                     # textから音声へ
+                    self._fn_callback( VoiceState.ST_TALK_CONVERT_START, talk_id, seq, text, emotion, None )
                     audio_bytes, tts_model = self._text_to_audio( text, emotion )
+                    self._fn_callback( VoiceState.ST_TALK_CONVERT_END, talk_id, seq, text, emotion, tts_model )
                     self.play_queue.put( (talk_id,seq,text,emotion,audio_bytes,tts_model) )
                     with self.lock:
                         if self._running_future2 is None:
-                            self._running_future2 = self.submit_task(self._th_run_talk)
+                            self._running_future2 = self._fn_submit_task(self._th_run_talk)
             except Exception as ex:
                 logger.exception(ex)
 
@@ -576,16 +582,14 @@ class TtsEngine:
             elif status == 3:
                 logger.info(f"[TTS] play thread exit")
                 # 再生終了通知
-                if self.start_call is not None:
-                    self.start_call( talk_id, -1, None, 9, emotion, tts_model )
+                self._fn_callback( VoiceState.ST_TALK_EXIT, talk_id, -1, None, emotion, tts_model )
                 return
             elif talk_id != self._talk_id: # cancelされた
                 continue
 
             try:
                 # 再生開始通知
-                if self.start_call is not None:
-                    self.start_call( talk_id, seq, text, 2, emotion, tts_model )
+                self._fn_callback( VoiceState.ST_TALK_PLAY_START, talk_id, seq, text, emotion, tts_model )
                 # 再生処理
                 if audio is not None:
                     self._sound_init()
@@ -614,8 +618,7 @@ class TtsEngine:
                             break
                         time.sleep(0.2)
                 # 再生完了通知
-                if self.start_call is not None:
-                    self.start_call( talk_id, seq, text, 3, emotion, tts_model )
+                self._fn_callback( VoiceState.ST_TALK_PLAY_END, talk_id, seq, text, emotion, tts_model )
 
             except Exception as ex:
                 logger.exception('')
