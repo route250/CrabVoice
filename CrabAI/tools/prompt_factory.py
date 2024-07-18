@@ -183,6 +183,7 @@ class PromptFactory:
         # 23時
         '深夜',
     ]
+    weekday_tbl = [ '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日', '日曜日']
 
     @staticmethod
     def get_season( dt ):
@@ -217,11 +218,10 @@ class PromptFactory:
         if isinstance( value, float ) and value>0.0:
             """unixtimeをフォーマットする"""
             dt=datetime.datetime.fromtimestamp(value)
+            weekday = PromptFactory.weekday_tbl[dt.weekday()]
             season=PromptFactory.get_season(dt)
             tod = PromptFactory.time_of_day_tbl[dt.hour]
-            text = dt.strftime('%Y年%m月%d日 %A '+season+' '+tod+'%H時%M分')
-            # 正規表現で不要な"0"を削除 ただし、"0時"はそのまま残す
-            text = re.sub(r'(?<!\d)0', '', text)  # 先頭の0を削除、ただし数字の後ろの0は残す
+            text = f"{dt.year}年{dt.month}月{dt.day}日 {weekday} {season} {tod}{dt.hour}時{dt.minute}分"
             return text
 
         return default
