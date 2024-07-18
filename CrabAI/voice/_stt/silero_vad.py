@@ -2,8 +2,11 @@ import os,sys,traceback
 from logging import getLogger
 
 import numpy as np
+
+_exists_torch:bool = False
 try:
     import torch
+    _exists_torch = True
 except:
     pass
 
@@ -34,29 +37,44 @@ class SileroVAD:
         self.window_size_samples:int = int(window_size_samples)
         self.sampling_rate:int = int(sampling_rate)
         self.device=device
+        self._can_not_load:bool = False
         self.model=None
+
+    @staticmethod
+    def scan_model_file():
+        home_dir = os.path.expanduser("~")
+        cache_dir=os.path.join( home_dir, ".cache" )
+        master_dir=os.path.join( cache_dir, "torch","hub", "snakers4_silero-vad_master" )
+        files_dir=os.path.join( master_dir, "files" ) # 旧バージョンはここにある
+        data_dir=os.path.join( master_dir, 'src','silero_vad','data' ) # 新しいバージョンはここにある
+        for dir in [files_dir,data_dir]:
+            model_path = os.path.join( dir, "silero_vad.jit")
+            if os.path.exists(model_path):
+                return model_path
+        return None
 
     def load(self) ->None:
         try:
-            if self.model is None:
-                home_dir = os.path.expanduser("~")
-                cache_dir=os.path.join( home_dir, ".cache" )
-                files_dir=os.path.join( cache_dir, "torch","hub", "snakers4_silero-vad_master","files" )
-                model_path = os.path.join( files_dir, "silero_vad.jit")
-                if not os.path.exists(model_path):
+            if self.model is None and _exists_torch and not self._can_not_load:
+                model_path = SileroVAD.scan_model_file()
+                if model_path is None:
                     # download example
                     logger.info("download SileroVAD models")
                     #torch.hub.download_url_to_file('https://models.silero.ai/vad_models/en.wav', 'en_example.wav')
-                    torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad',)
-                if not os.path.exists(model_path):
-                    raise AssertionError("can not load model")
+                    torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad',trust_repo=True)
+                    model_path = SileroVAD.scan_model_file()
+                if model_path is None:
+                    self._can_not_load = True
+                    raise AssertionError("can not load model in .cache directory")
                 self.model = init_jit_model(model_path, device=self.device)
-        except:
+        except Exception as ex:
+            self._can_not_load = True
             logger.exception("can not load SileroVAD model")
 
     def reset_states(self) ->None:
         try:
-            self.model.reset_states()
+            if self.model:
+                self.model.reset_states()
         except:
             logger.exception("")
 
@@ -72,16 +90,18 @@ class SileroVAD:
         except:
             raise TypeError("Audio cannot be casted to tensor. Cast it manually")
         try:
-            speech_prob = self.model(audio_torch, self.sampling_rate).item()
-            return round( float(speech_prob), 3 )
+            if self.model:
+                speech_prob = self.model(audio_torch, self.sampling_rate).item()
+                return round( float(speech_prob), 3 )
         except:
             logger.exception("")
         return 0.0
 
     def is_speech_torch(self,audio) ->float:
         try:
-            speech_prob = self.model(audio, self.sampling_rate).item()
-            return speech_prob
+            if self.model:
+                speech_prob = self.model(audio, self.sampling_rate).item()
+                return speech_prob
         except:
             logger.exception("")
         return 0.0

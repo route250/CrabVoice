@@ -104,10 +104,13 @@ class SourceToAudio(VFunction):
         try:
             librosa.resample( np.zeros( (1,1), dtype=np.float32), orig_sr=self.sample_rate*2, target_sr=self.sample_rate ) # preload of librosa
         except:
-            logger.exception("load")
+            logger.exception("load librosa.resample")
 
-        self.silerovad.load()
-        self.silerovad.is_speech( np.zeros( self.frame_size, dtype=np.float32))
+        try:
+            self.silerovad.load()
+            self.silerovad.is_speech( np.zeros( self.frame_size, dtype=np.float32))
+        except:
+            logger.exception("load self.silerovad")
 
     def reload_share_param(self):
         butter = self.conf.get_audio_butter()
