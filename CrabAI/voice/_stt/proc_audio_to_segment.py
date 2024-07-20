@@ -141,7 +141,7 @@ class AudioToSegment(VFunction):
         self.prefed:bool=False
 
         # ログ用
-        self.mute:bool=False
+        self.mute:bool=None
 
     def load(self):
         pass
@@ -208,10 +208,11 @@ class AudioToSegment(VFunction):
             self.seg_buffer.append(frame)
             self.raw_buffer.append(frame_raw)
 
+            self.mute = self.mute if self.mute is not None else not mute
             if not self.mute:
                 if mute:
                     self.mute=True
-                    print("[A2S] ### MUTE TRUE ###")
+                    self.proc_mute()
                     self.rec=NON_VOICE
                     self.rec_start = 0
                     self.pos_SEGSTART = 0
@@ -220,7 +221,7 @@ class AudioToSegment(VFunction):
             else:
                 if not mute and vad_ave<self.dn_trig:
                     self.mute = False
-                    print("[A2S] ### MUTE FALSE ###")
+                    self.proc_mute()
 
             current_pos:int = self.seg_buffer.get_pos()
             hists_len:int = self.hists.put( hi,lo, self.rec, vad, vad_ave, energy, zc, var, self.mute )
@@ -380,6 +381,18 @@ class AudioToSegment(VFunction):
             self.hists.set_color( hists_idx, self.rec )
             self.proc_output_dump(utc,False)
             self.conf.set_aux( self.rec, vad, energy, zc, self.mute )
+
+    def proc_mute(self):
+        if self.mute:
+            print("[A2S] ### MUTE TRUE ###")
+            ev = Ev.MuteOn
+        else:
+            print("[A2S] ### MUTE FALSE ###")
+            ev = Ev.MuteOff
+        utc = self.last_utc
+        end_pos = self.seg_buffer.get_pos()
+        stt_data = SttData( ev, utc, end_pos, end_pos, self.sample_rate )
+        self.proc_output_event(stt_data)
 
     def proc_end_of_data(self):
         utc = self.last_utc

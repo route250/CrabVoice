@@ -10,3 +10,4 @@ class VoiceState(Enum):
     ST_TALK_EXIT:int = 15
     ST_LISTEN:int = 20
     ST_LISTEN_END: int = 21
+    ST_STARTED_STT:int = 100

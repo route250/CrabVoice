@@ -28,6 +28,9 @@ def safe_join( t ):
     except:
         return False
 
+def precheck( a:bool, b:bool ) -> bool:
+    return a if isinstance(a,bool) else b
+
 class SttEngine(ShareParam):
 
     @staticmethod
@@ -48,6 +51,9 @@ class SttEngine(ShareParam):
     def __init__(self, source, *, conf:ShareParam=None, sample_rate:int=16000, num_vosk:int=2 ):
         super().__init__( conf )
         self.sample_rate:int = sample_rate if isinstance(sample_rate,(int,float)) and sample_rate>16000 else 16000
+        self.started:bool = False
+        self.in_listen:bool = False
+        self.in_talk:bool = False
         dump_out = self.dump_out = PQ()
         data_in1 = self.data_in1 = PQ()
         if not isinstance(conf,ShareParam):
@@ -83,6 +89,7 @@ class SttEngine(ShareParam):
         self.prc3.start()
         self.prc2.start()
         self.prc1.start()
+        self.src.set_mute(True)
         self.src.start()
 
     def configure(self, **kwargs):
@@ -121,21 +128,48 @@ class SttEngine(ShareParam):
         if not self.dump_out.empty():
             try:
                 stt_data:SttData = self.dump_out.get_nowait()
+                stt_data = self._mute_detect(stt_data)
                 return stt_data
             except Empty:
                 pass
         stt_data:SttData = self.data_out.get( timeout=0.1 )
+        stt_data = self._mute_detect(stt_data)
+        return stt_data
+
+    def _mute_detect(self,stt_data:SttData|None):
+        if stt_data is None:
+            return stt_data
+        if stt_data.typ == Ev.MuteOn or stt_data.typ == Ev.MuteOff:
+            # muteの情報からSTTモジュールがスタートしたか判定
+            if self.started:
+                raise Empty() # 開始隅ならmute情報は無視する
+            print(f"[STT]Started {stt_data}")
+            self.set_mute( started=True) # 開始フラグを立ててmute情報を通知する
         return stt_data
 
     def tick_time(self, time_sec:float ):
         pass
 
-    def precheck_mute(self, *, in_talk=None, in_listen=None ):
+    def precheck_mute(self, *, started=None, in_talk=None, in_listen=None ):
         if isinstance(self.src,MicSource):
-            return self.src.precheck_mute(in_talk=in_talk, in_listen=in_listen)
-        return False,False
+            before = self.src.get_mute()
+            started = precheck( started, self.started )
+            in_talk = precheck( in_talk, self.in_talk )
+            in_listen = precheck( in_listen, self.in_listen )
+            after = not started or in_talk or not in_listen
+            return after,before
+        return True,True
 
-    def set_mute(self, *, in_talk=None, in_listen=None, check=False ):
+    def set_mute(self, *, started=None, in_talk=None, in_listen=None, check=False ):
+        self.started = precheck( started, self.started )
+        self.in_talk = precheck( in_talk, self.in_talk )
+        self.in_listen = precheck( in_listen, self.in_listen )
         if isinstance(self.src,MicSource):
-            return self.src.set_mute(in_talk=in_talk, in_listen=in_listen)
-        return False,False
+            mute = not self.started or self.in_talk or not self.in_listen
+            return self.src.set_mute(mute)
+        return True,True
+        # if after != before and not after:
+        #     stack = traceback.extract_stack()
+        #     filtered_stack = [frame for frame in stack if 'maeda/LLM/CrabVoice/' in frame.filename]
+        #     stack_trace = ''.join(traceback.format_list(filtered_stack))
+        #     logger.info(f"[STT] set_mute in_talk={in_talk} in_listen={in_listen}\n%s", stack_trace)

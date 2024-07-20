@@ -8,7 +8,7 @@ import numpy as np
 from .voice_state import VoiceState
 from .stt import SttEngine, SttData, get_mic_devices
 from .tts import TtsEngine
-from CrabAI.vmp import ShareParam
+from CrabAI.vmp import Ev, ShareParam
 import logging
 logger = logging.getLogger(__name__)
 
@@ -136,6 +136,8 @@ class VoiceTalkEngine(ShareParam):
                         self._save_audio(stt_data)
                     elif stt_data.typ == SttData.Text or stt_data.typ == SttData.Term:
                         self._fn_stt_callback( stt_data )
+                    elif stt_data.typ == Ev.MuteOn or stt_data.typ == Ev.MuteOff:
+                        self._fn_stt_callback( stt_data ) # STTが開始した時だけmute情報が来るはず
                 except Empty:
                     q2=False
 
@@ -173,12 +175,16 @@ class VoiceTalkEngine(ShareParam):
 
     def get_recognized_text(self):
         """音声認識による入力"""
-        self.set_mute( in_listen=True )
+        mute,_ = self.set_mute( in_listen=True )
         while True:
             exit_time = time.time()+2.0
             with self.text_lock:
                 while time.time()<exit_time:
-                    if self.text_stat==3:
+                    if mute:
+                        mute, before = self.set_mute( in_listen=True )
+                        if not mute and self.tts:
+                            self.tts.play_listen_in()
+                    elif self.text_stat==3:
                         self.text_stat = 0
                         if len(self.text_buf)>0:
                             text = ' '.join(self.text_buf)
@@ -214,7 +220,11 @@ class VoiceTalkEngine(ShareParam):
         s = -1
         stt_id:int = self.stt_id
         seq:int = -1
-        if SttData.Start==typ:
+        if Ev.MuteOn==typ or Ev.MuteOff==typ:
+            # STTが開始した時だけmute情報が来るはず
+            logger.info( f"[STT] MODULE STARTED")            
+            s = VoiceState.ST_STARTED_STT
+        elif SttData.Start==typ:
             logger.info( f"[STT] {start_sec:.3f} - {end_sec:.3f} {stat} START")
             s = VoiceState.ST_LISTEN
             with self.text_lock:

@@ -19,6 +19,8 @@ class Ev:
     Stop:int = 102
     StartOfData:int=1000
     EndOfData:int=1001
+    MuteOn:int = 1002
+    MuteOff:int = 1003
 
     def __init__(self, seq:int, typ, *args, **kwargs ):
         self.seq = seq
@@ -427,7 +429,7 @@ class VFunction:
 
     def proc_output_event(self, ev:Ev):
         if isinstance(self.data_out,PQ):
-            if ev.typ == Ev.EndOfData or ev.typ == Ev.Stop:
+            if ev.typ == Ev.EndOfData or ev.typ == Ev.Stop or ev.typ == Ev.MuteOn or ev.typ == Ev.MuteOff:
                 if self.is_collected(ev):
                     if self.num_proc>1:
                         print(f"[{self.proc_name}] Q OUT {str(ev)}")

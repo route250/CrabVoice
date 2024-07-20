@@ -130,6 +130,7 @@ class SourceBase:
     StStarted:int = 2
     StAbort:int = 3
     StStopped:int = 4
+    mute_flag:np.ndarray = np.ones(10, dtype=np.float32)
 
     def __init__(self, conf:ShareParam, data_out:Queue, *, source, sampling_rate:int=None):
         self.state:int = SourceBase.StInit
@@ -140,9 +141,8 @@ class SourceBase:
         self.orig_sr:int = 0
         self.seq:int = 0
         self.end_of_data:bool = False
-        self.mute_sw:bool = False
-        self.in_listen:bool = True
-        self.in_talk:bool = False
+        self._in_mute:bool = False
+        self._mute:bool = True
 
     def load(self):
         if self.state == SourceBase.StInit:
@@ -185,10 +185,9 @@ class SourceBase:
         st = pos
         ed = pos + len(raw)
         stt_data:SttData = SttData( SttData.Audio, utc, st, ed, sample_rate=self.orig_sr, raw=raw, seq=self.seq)
-        if self.mute_sw or not self.in_listen or self.in_talk:
-            mute_array:np.ndarray = np.ones(10, dtype=np.float32)
-            stt_data.hists = pd.DataFrame( {'mute': mute_array })
-        self.mute_sw = not self.in_listen or self.in_talk
+        if self._in_mute or self._mute:
+            stt_data.hists = pd.DataFrame( {'mute': SourceBase.mute_flag } )
+        self._in_mute = self._mute
         self.data_out.put( stt_data )
         self.seq+=1
 
@@ -207,32 +206,14 @@ class SourceBase:
     def stop_source(self):
         raise NotImplementedError()
 
-    def precheck_mute(self, *, in_talk=None, in_listen=None):
-        pre_talk = self.in_talk
-        pre_listen = self.in_listen
-        before:bool = not pre_listen or pre_talk
-        if isinstance(in_talk,bool) and pre_talk != in_talk:
-            pre_talk = in_talk
-        if isinstance(in_listen,bool) and pre_listen != in_listen:
-            pre_listen = in_listen
-        after:bool = not pre_listen or pre_talk
-        return after, before
+    def get_mute(self) ->bool:
+        return self._mute
 
-    def set_mute(self, *, in_talk=None, in_listen=None):
-        before:bool = not self.in_listen or self.in_talk
-        if isinstance(in_talk,bool) and self.in_talk != in_talk:
-            # print(f"[STT] in_talk {self.in_talk} -> {in_talk}")
-            self.in_talk = in_talk
-        if isinstance(in_listen,bool) and self.in_listen != in_listen:
-            # print(f"[STT] in_listen {self.in_listen} -> {in_listen}")
-            self.in_listen = in_listen
-        after:bool = not self.in_listen or self.in_talk
-        # if after != before and not after:
-        #     stack = traceback.extract_stack()
-        #     filtered_stack = [frame for frame in stack if 'maeda/LLM/CrabVoice/' in frame.filename]
-        #     stack_trace = ''.join(traceback.format_list(filtered_stack))
-        #     logger.info(f"[STT] set_mute in_talk={in_talk} in_listen={in_listen}\n%s", stack_trace)
-        return after, before
+    def set_mute(self, mute:bool):
+        before:bool = self._mute
+        if isinstance(mute,bool) and self._mute != mute:
+            self._mute = mute
+        return self._mute, before
 
 class MicSource(SourceBase):
 
@@ -241,7 +222,7 @@ class MicSource(SourceBase):
         self.mic_sampling_rate = int(mic_sampling_rate) if isinstance(mic_sampling_rate,(int,float)) and mic_sampling_rate>self.sampling_rate else self.sampling_rate
         self.utc:float = time.time()
         self.pos:int = 0
-        self.in_listen = False
+        self._mute = True
 
     def load_source(self):
         if self.source is not None:
