@@ -44,6 +44,7 @@ class VoiceTalkEngine(ShareParam):
         self._input_text:list[str] = []
         #
         self.started:bool = False
+        self.stopped:bool = False
         self.in_listen:bool = False
         self.in_talk:bool = False
 
@@ -166,6 +167,7 @@ class VoiceTalkEngine(ShareParam):
             self.th.start()
 
     def stop(self):
+        self.stopped = True
         self._status = VoiceState.ST_STOPPED
         if self.th is not None:
             self.th.join
@@ -182,12 +184,12 @@ class VoiceTalkEngine(ShareParam):
 
     def get_recognized_text(self):
         """音声認識による入力"""
-        logger.info("INPUT START----------------------------")
+        # logger.info("INPUT START----------------------------")
         mute,_ = self.set_mute( in_listen=True )
-        while True:
+        while not self.stopped:
             exit_time = time.time()+2.0
             with self.text_lock:
-                while time.time()<exit_time:
+                while not self.stopped and time.time()<exit_time:
                     if mute:
                         mute, before = self.set_mute( in_listen=True )
                         if not mute and self.tts:

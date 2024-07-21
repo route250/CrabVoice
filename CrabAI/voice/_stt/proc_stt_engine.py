@@ -148,7 +148,7 @@ class SttEngine(ShareParam):
     def tick_time(self, time_sec:float ):
         pass
 
-    def get_mute(self, b ):
+    def get_mute(self):
         if isinstance(self.src,MicSource):
             return self.src.get_mute()
         return False
