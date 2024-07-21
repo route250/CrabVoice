@@ -12,6 +12,9 @@ from CrabAI.vmp import Ev, ShareParam
 import logging
 logger = logging.getLogger(__name__)
 
+def precheck( a:bool, b:bool ) -> bool:
+    return a if isinstance(a,bool) else b
+
 class VoiceTalkEngine(ShareParam):
     EOT:str = TtsEngine.EOT
     """
@@ -39,6 +42,10 @@ class VoiceTalkEngine(ShareParam):
         self.tts:TtsEngine = None
         self.save_path:str = None
         self._input_text:list[str] = []
+        #
+        self.started:bool = False
+        self.in_listen:bool = False
+        self.in_talk:bool = False
 
     def __getitem__(self,key):
         if key=="save_path":
@@ -175,6 +182,7 @@ class VoiceTalkEngine(ShareParam):
 
     def get_recognized_text(self):
         """音声認識による入力"""
+        logger.info("INPUT START----------------------------")
         mute,_ = self.set_mute( in_listen=True )
         while True:
             exit_time = time.time()+2.0
@@ -222,7 +230,8 @@ class VoiceTalkEngine(ShareParam):
         seq:int = -1
         if Ev.MuteOn==typ or Ev.MuteOff==typ:
             # STTが開始した時だけmute情報が来るはず
-            logger.info( f"[STT] MODULE STARTED")            
+            logger.info( f"[STT] MODULE STARTED")
+            self.set_mute( started=True )
             s = VoiceState.ST_STARTED_STT
         elif SttData.Start==typ:
             logger.info( f"[STT] {start_sec:.3f} - {end_sec:.3f} {stat} START")
@@ -292,20 +301,31 @@ class VoiceTalkEngine(ShareParam):
                 logger.debug( f"[TTS] tts_callback {stat} {text}")
                 self._status = VoiceState.ST_LISTEN
                 self._fn_callback( VoiceState.ST_TALK_EXIT, talk_id=voice_id, talk_text=None )
-                self.set_mute( in_talk=False )
+                self.set_mute( in_talk=False ) #pp
             else:
                 logger.error( f"[TTS] tts_callback {stat}")
 
-    def set_mute(self, *, in_talk=None, in_listen=None ):
-        if self.stt:
-            after,before = self.stt.precheck_mute( in_talk=in_talk, in_listen=in_listen)
-            if after != before and not after:
-                self.play_mute_out(wait=True)
-            after,before = self.stt.set_mute( in_talk=in_talk, in_listen=in_listen)
-            if after != before and after:
-                self.play_mute_in()
-            return after,before
+    def set_mute(self, *, started=None, in_talk=None, in_listen=None ):
+        with self.text_lock:
+            self.started = precheck( started, self.started )
+            self.in_talk = precheck( in_talk, self.in_talk )
+            self.in_listen = precheck( in_listen, self.in_listen )
+            mute = not self.started or self.in_talk or not self.in_listen
+            if self.stt:
+                before = self.stt.get_mute()
+                # if mute != before and not mute:
+                #     self.play_mute_out(wait=True)
+                x3,x4 = self.stt.set_mute(mute)
+                if x3!=x4 and x3:
+                    self.play_mute_in()
+                return x3,x4
         return False,False
+
+        # if after != before and not after:
+        #     stack = traceback.extract_stack()
+        #     filtered_stack = [frame for frame in stack if 'maeda/LLM/CrabVoice/' in frame.filename]
+        #     stack_trace = ''.join(traceback.format_list(filtered_stack))
+        #     logger.info(f"[STT] set_mute in_talk={in_talk} in_listen={in_listen}\n%s", stack_trace)
 
     def play_mute_in(self):
         if self.tts is not None:

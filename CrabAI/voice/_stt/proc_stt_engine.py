@@ -52,8 +52,6 @@ class SttEngine(ShareParam):
         super().__init__( conf )
         self.sample_rate:int = sample_rate if isinstance(sample_rate,(int,float)) and sample_rate>16000 else 16000
         self.started:bool = False
-        self.in_listen:bool = False
-        self.in_talk:bool = False
         dump_out = self.dump_out = PQ()
         data_in1 = self.data_in1 = PQ()
         if not isinstance(conf,ShareParam):
@@ -143,33 +141,19 @@ class SttEngine(ShareParam):
             # muteの情報からSTTモジュールがスタートしたか判定
             if self.started:
                 raise Empty() # 開始隅ならmute情報は無視する
+            self.started = True
             print(f"[STT]Started {stt_data}")
-            self.set_mute( started=True) # 開始フラグを立ててmute情報を通知する
         return stt_data
 
     def tick_time(self, time_sec:float ):
         pass
 
-    def precheck_mute(self, *, started=None, in_talk=None, in_listen=None ):
+    def get_mute(self, b ):
         if isinstance(self.src,MicSource):
-            before = self.src.get_mute()
-            started = precheck( started, self.started )
-            in_talk = precheck( in_talk, self.in_talk )
-            in_listen = precheck( in_listen, self.in_listen )
-            after = not started or in_talk or not in_listen
-            return after,before
-        return True,True
+            return self.src.get_mute()
+        return False
 
-    def set_mute(self, *, started=None, in_talk=None, in_listen=None, check=False ):
-        self.started = precheck( started, self.started )
-        self.in_talk = precheck( in_talk, self.in_talk )
-        self.in_listen = precheck( in_listen, self.in_listen )
+    def set_mute(self, b ):
         if isinstance(self.src,MicSource):
-            mute = not self.started or self.in_talk or not self.in_listen
-            return self.src.set_mute(mute)
-        return True,True
-        # if after != before and not after:
-        #     stack = traceback.extract_stack()
-        #     filtered_stack = [frame for frame in stack if 'maeda/LLM/CrabVoice/' in frame.filename]
-        #     stack_trace = ''.join(traceback.format_list(filtered_stack))
-        #     logger.info(f"[STT] set_mute in_talk={in_talk} in_listen={in_listen}\n%s", stack_trace)
+            return self.src.set_mute(b)
+        return False,False

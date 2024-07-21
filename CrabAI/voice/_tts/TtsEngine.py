@@ -200,6 +200,7 @@ class TtsEngine:
         self.sound_mute_out = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ec", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound_listen_in = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 ee", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound_listen_out = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 cc", sampling_rate=16000 ))), sample_rate=16000 )
+        self.sound_talk_end = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v10 eg", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound_error1 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t240v15 O3aa", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound_error2 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v15 O3aaa", sampling_rate=16000 ))), sample_rate=16000 )
 
@@ -582,6 +583,7 @@ class TtsEngine:
             elif status == 3:
                 logger.info(f"[TTS] play thread exit")
                 # 再生終了通知
+                self.play_talk_end()
                 self._fn_callback( VoiceState.ST_TALK_EXIT, talk_id, -1, None, emotion, tts_model )
                 return
             elif talk_id != self._talk_id: # cancelされた
@@ -631,13 +633,17 @@ class TtsEngine:
         logger.info("beep mute_out")
         self._play_beep( self.sound_mute_out, wait=wait )
 
-    def play_listen_in(self):
+    def play_listen_in(self, *, wait=False):
         logger.info("beep listen_in")
-        self._play_beep( self.sound_listen_in )
+        self._play_beep( self.sound_listen_in, wait=wait )
 
     def play_listen_out(self):
         logger.info("beep listen_out")
         self._play_beep( self.sound_listen_out )
+
+    def play_talk_end(self):
+        logger.info("beep talk_end")
+        self._play_beep( self.sound_talk_end, wait=True )
 
     def play_error1(self):
         logger.info("beep error1")
