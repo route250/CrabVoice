@@ -181,11 +181,12 @@ class VoiceTalkEngine(ShareParam):
     def add_input_text(self,message):
         with self.text_lock:
             self._input_text.append( message )
+            self.text_lock.notify()
 
     def get_recognized_text(self):
         """音声認識による入力"""
         # logger.info("INPUT START----------------------------")
-        mute,_ = self.set_mute( in_listen=True )
+        mute:bool = True
         while not self.stopped:
             exit_time = time.time()+2.0
             with self.text_lock:
@@ -242,6 +243,7 @@ class VoiceTalkEngine(ShareParam):
                 if texts is not None and len(texts)>0:
                     self.text_buf.append(texts)
                 self.text_stat = 1
+                self.text_lock.notify()
             copy_confidence = 1.0
         elif SttData.Text==typ:
             logger.info( f"[STT] {start_sec:.3f} - {end_sec:.3f} {stat} {texts} {confidence}")
@@ -256,10 +258,12 @@ class VoiceTalkEngine(ShareParam):
                     self.text_buf.append(texts)
                 copy_texts = [ t for t in self.text_buf]
                 self.text_stat = 2
+                self.text_lock.notify()
             copy_confidence = self.text_confidence = confidence
                 
         elif SttData.Term==typ:
             with self.text_lock:
+                self.text_lock.notify()
                 if texts is not None and len(texts)>0:
                     self.text_buf.append(texts)
                 copy_texts = [ t for t in self.text_buf]
@@ -320,6 +324,7 @@ class VoiceTalkEngine(ShareParam):
                 x3,x4 = self.stt.set_mute(mute)
                 if x3!=x4 and x3:
                     self.play_mute_in()
+                    self.text_lock.notify()
                 return x3,x4
         return False,False
 
@@ -362,7 +367,8 @@ class VoiceTalkEngine(ShareParam):
             print( f"[TTS]add_talk {text}" )
 
     def sep_talk(self):
-        self.tts.cancel()
+        if self.tts:
+            self.tts.cancel()
 
     def _save_audio(self,stt_data:SttData):
         try:
