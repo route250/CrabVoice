@@ -181,40 +181,44 @@ class VoiceTalkEngine(ShareParam):
     def add_input_text(self,message):
         with self.text_lock:
             self._input_text.append( message )
-            self.text_lock.notify()
+            self.text_lock.notify_all()
 
     def get_recognized_text(self):
         """音声認識による入力"""
         # logger.info("INPUT START----------------------------")
+        self.set_mute( in_listen=True )
         mute:bool = True
         while not self.stopped:
             exit_time = time.time()+2.0
             with self.text_lock:
-                while not self.stopped and time.time()<exit_time:
-                    if mute:
-                        mute, before = self.set_mute( in_listen=True )
-                        if not mute and self.tts:
-                            self.tts.play_listen_in()
-                    elif self.text_stat==3:
-                        self.text_stat = 0
-                        if len(self.text_buf)>0:
-                            text = ' '.join(self.text_buf)
-                            self.text_buf = []
-                            confs = self.text_confidence
-                            self.set_mute( in_listen=False )
-                            return text, confs
-                    else:
-                        if self._input_text and len(self.stt_seq_count)==0:
-                            start_sec = time.time()
-                            stt_id = self.stt_id = self.voice_id_dict[start_sec] = len(self.voice_id_dict)
-                            seq = 0
-                            texts = ' '.join(self._input_text)
-                            self._input_text = []
-                            self.set_mute( in_listen=False )
-                            for s in ( VoiceState.ST_LISTEN, VoiceState.ST_LISTEN_END):
-                                self._fn_callback( s, talk_id=stt_id, seq=seq, listen_text=texts, confidence=1.0 )
-                            return texts, 1.0
-                        self.text_lock.wait(0.5)
+                try:
+                    while not self.stopped and time.time()<exit_time:
+                        if mute:
+                            mute = self.get_mute()
+                            if not mute and self.tts:
+                                self.tts.play_listen_in()
+                        elif self.text_stat==3:
+                            self.text_stat = 0
+                            if len(self.text_buf)>0:
+                                text = ' '.join(self.text_buf)
+                                self.text_buf = []
+                                confs = self.text_confidence
+                                self.set_mute( in_listen=False )
+                                return text, confs
+                        else:
+                            if self._input_text and len(self.stt_seq_count)==0:
+                                start_sec = time.time()
+                                stt_id = self.stt_id = self.voice_id_dict[start_sec] = len(self.voice_id_dict)
+                                seq = 0
+                                texts = ' '.join(self._input_text)
+                                self._input_text = []
+                                self.set_mute( in_listen=False )
+                                for s in ( VoiceState.ST_LISTEN, VoiceState.ST_LISTEN_END):
+                                    self._fn_callback( s, talk_id=stt_id, seq=seq, listen_text=texts, confidence=1.0 )
+                                return texts, 1.0
+                         self.text_lock.wait(1.0)
+                finally:
+                    self.text_lock.notify_all()
             self.tick_time( time.time() )
 
         return None,None
@@ -243,7 +247,7 @@ class VoiceTalkEngine(ShareParam):
                 if texts is not None and len(texts)>0:
                     self.text_buf.append(texts)
                 self.text_stat = 1
-                self.text_lock.notify()
+                self.text_lock.notify_all()
             copy_confidence = 1.0
         elif SttData.Text==typ:
             logger.info( f"[STT] {start_sec:.3f} - {end_sec:.3f} {stat} {texts} {confidence}")
@@ -258,7 +262,7 @@ class VoiceTalkEngine(ShareParam):
                     self.text_buf.append(texts)
                 copy_texts = [ t for t in self.text_buf]
                 self.text_stat = 2
-                self.text_lock.notify()
+                self.text_lock.notify_all()
             copy_confidence = self.text_confidence = confidence
                 
         elif SttData.Term==typ:
@@ -271,6 +275,7 @@ class VoiceTalkEngine(ShareParam):
                     return
                 self.text_stat = 3
                 self.stt_seq_count = {}
+                self.text_lock.notify_all()
             logger.info( f"[STT] {start_sec:.3f} - {end_sec:.3f} {stat} {texts} {confidence} EOT")
             s = VoiceState.ST_LISTEN_END
             copy_confidence = self.text_confidence = confidence
@@ -311,6 +316,11 @@ class VoiceTalkEngine(ShareParam):
             else:
                 logger.error( f"[TTS] tts_callback {stat}")
 
+    def get_mute(self):
+        if self.stt:
+            return self.stt.get_mute()
+        return False
+
     def set_mute(self, *, started=None, in_talk=None, in_listen=None ):
         with self.text_lock:
             self.started = precheck( started, self.started )
@@ -326,8 +336,9 @@ class VoiceTalkEngine(ShareParam):
                     print( f"[set_mute] before:{before} {x4} after:{after} s:{started}->{self.started}  t:{in_talk}->{self.in_talk} l:{in_listen}->{self.in_listen}" )
                 if after!=x4 and after:
                     self.play_mute_in()
-                    self.text_lock.notify()
+                    self.text_lock.notify_all()
                 return after,x4
+            self.text_lock.notify_all()
         return False,False
 
         # if after != before and not after:
