@@ -385,7 +385,7 @@ class TtsEngine:
                     self.play_queue.put( (talk_id,seq,text,emotion,audio_bytes,tts_model) )
                     with self.lock:
                         if self._talk_future is None:
-                            self._running_future2 = self._fn_submit_task(self._th_run_talk)
+                            self._talk_future = self._fn_submit_task(self._th_run_talk)
             except Exception as ex:
                 logger.exception(ex)
 
