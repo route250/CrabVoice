@@ -321,11 +321,13 @@ class VoiceTalkEngine(ShareParam):
                 before = self.stt.get_mute()
                 # if mute != before and not mute:
                 #     self.play_mute_out(wait=True)
-                x3,x4 = self.stt.set_mute(mute)
-                if x3!=x4 and x3:
+                after,x4 = self.stt.set_mute(mute)
+                if after!=x4 or x4!=before:
+                    print( f"[set_mute] before:{before} {x4} after:{after} s:{started}->{self.started}  t:{in_talk}->{self.in_talk} l:{in_listen}->{self.in_listen}" )
+                if after!=x4 and after:
                     self.play_mute_in()
                     self.text_lock.notify()
-                return x3,x4
+                return after,x4
         return False,False
 
         # if after != before and not after:
