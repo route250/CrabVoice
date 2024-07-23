@@ -216,7 +216,7 @@ class VoiceTalkEngine(ShareParam):
                                 for s in ( VoiceState.ST_LISTEN, VoiceState.ST_LISTEN_END):
                                     self._fn_callback( s, talk_id=stt_id, seq=seq, listen_text=texts, confidence=1.0 )
                                 return texts, 1.0
-                         self.text_lock.wait(1.0)
+                        self.text_lock.wait(1.0)
                 finally:
                     self.text_lock.notify_all()
             self.tick_time( time.time() )
