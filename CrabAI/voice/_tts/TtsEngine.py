@@ -385,7 +385,10 @@ class TtsEngine:
                     self.play_queue.put( (talk_id,seq,text,emotion,audio_bytes,tts_model) )
                     with self.lock:
                         if self._talk_future is None:
+                            logger.info("play thread submit")
                             self._talk_future = self._fn_submit_task(self._th_run_talk)
+                        else:
+                            logger.info("play thread exists")
             except Exception as ex:
                 logger.exception(ex)
 
@@ -535,6 +538,7 @@ class TtsEngine:
     TALK_END_WAIT:int = 2
     TALK_END:int = 3
     def _th_run_talk(self)->None:
+        logger.info(f"[TTS] play thread start")
         status:int = TtsEngine.TALK_RUN
         while True:
             talk_id:int = -1

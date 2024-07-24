@@ -9,8 +9,8 @@ from openai import OpenAI
 from openai.types.chat import (ChatCompletion,ChatCompletionChunk)
 
 logger = logging.getLogger('voice')
-print(f"cwd:{os.getcwd()}")
-print(f"__name__:{__name__}")
+# print(f"cwd:{os.getcwd()}")
+# print(f"__name__:{__name__}")
 sys.path.append(os.getcwd())
 from CrabAI.tools import JsonStreamParser, JsonStreamParseError
 
