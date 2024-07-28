@@ -4,9 +4,9 @@ from logging import getLogger
 import time
 import numpy as np
 from multiprocessing.queues import Queue as PQ
-import wave
-import sounddevice as sd
-import librosa
+# import wave
+# import sounddevice as sd
+# import librosa
 from scipy import signal
 
 from CrabAI.vmp import Ev, ShareParam, VFunction, VProcess

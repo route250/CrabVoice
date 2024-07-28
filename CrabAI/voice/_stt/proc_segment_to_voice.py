@@ -20,6 +20,7 @@ try:
     from . import recognizer_vosk
     _X_VOSK:bool=True
 except:
+    logger.error("can not import vosk")
     _X_VOSK:bool=False
 
 from CrabAI.vmp import Ev, ShareParam, VFunction, VProcess
