@@ -325,6 +325,12 @@ class AudioToSegment(VFunction):
                             if idx<0 or self.hists.get_vad_slope( idx )<0.01:
                                 break
                             seg_start -= self.frame_size
+                        # mute部分をスキップ
+                        while True:
+                            idx = self.hists.to_index( seg_start//self.frame_size -1 )
+                            if not self.hists.get_mute(idx)>0.0:
+                                break
+                            seg_start += self.frame_size
                         idx = max(0, self.hists.to_index( seg_start//self.frame_size -1 ) )
                         for idx in range( idx, hists_len):
                             hco = self.hists.hist_color[idx]

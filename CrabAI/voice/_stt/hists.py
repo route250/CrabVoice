@@ -96,8 +96,17 @@ class AudioFeatureBuffer:
             self.hist_vad_ave.set(len(self.hist_vad_ave)+offset, rb_ma)
         return self.hist_hi.length
 
+    def get_mute( self, idx ):
+        try:
+            return self.hist_mute.get( idx )
+        except:
+            return 1.0
+
     def get_color( self, idx ):
-        self.hist_color.get( idx )
+        try:
+            return self.hist_color.get( idx )
+        except:
+            return 0.0
 
     def set_color( self, idx, color ):
         self.hist_color.set( idx, color )
