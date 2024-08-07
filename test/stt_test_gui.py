@@ -1,6 +1,7 @@
 
 from io import BytesIO
 import traceback
+import time
 from threading import Thread
 from queue import Queue, Empty
 import tkinter as tk
@@ -13,7 +14,8 @@ import pygame
 
 import sys,os
 sys.path.append(os.getcwd())
-from CrabAI.voice._stt.audio_to_text import AudioToText, SttData
+from CrabAI.vmp import ShareParam
+from CrabAI.voice.stt import SttEngine, SttData
 from CrabAI.voice.voice_utils import audio_to_wave_bytes
 from stt_data_plot import SttDataTable, SttDataPlotter
 
@@ -76,8 +78,9 @@ class Application(tk.Tk):
         self.gstop_entry = ttk.Entry(self.button_frame,width=4)
         self.gstop_entry.pack(side=tk.LEFT, padx=5)
 
-        stt:AudioToText = AudioToText(callback=None)
-        fpass, fstop, gpass, gstop = stt['vad.butter']
+        conf:ShareParam = ShareParam()
+        SttEngine.load_default(conf)
+        fpass, fstop, gpass, gstop = conf.get_audio_butter()
         self._set_butter( fpass, fstop, gpass, gstop )
 
         # 実行ボタン
@@ -154,9 +157,9 @@ class Application(tk.Tk):
 
     # 音声解析関数
     def analysis_audio(self):
-        self.stt:AudioToText = AudioToText( callback=self.update_result )
+        self.stt:SttEngine = SttEngine( self.filename )
 
-        butter = self.stt['vad.butter']
+        butter = self.stt.get_audio_butter()
         for idx, ent in enumerate( [ self.fpass_entry, self.fstop_entry, self.gpass_entry, self.gstop_entry ] ):
             try:
                 val = float(ent.get())
@@ -164,10 +167,15 @@ class Application(tk.Tk):
             except ValueError:
                 ent.delete(0, tk.END)
                 ent.insert(0, butter[idx] )
-        self.stt['vad.butter'] = butter
-
-        self.stt.load( filename=self.filename )
+        self.stt.set_audio_butter( butter )
         self.stt.start()
+        while True:
+            try:
+                stt_data:SttData|None = self.stt.get_data()
+            except Empty:
+                time.sleep(0.2)
+                continue
+            # ToDo
 
     def run_analysis(self):
         if hasattr(self, 'filename'):
