@@ -1,11 +1,11 @@
 import numpy as np
 
 class LowPos:
-    def __init__(self, max_elements=10):
-        self.max_elements = max_elements
-        self.table = np.full((max_elements, 2), np.inf)
-        self.current_size = 0
-    def __len__(self):
+    def __init__(self, max_elements:int=10):
+        self.max_elements:int = max_elements
+        self.table:np.ndarray = np.full((max_elements, 2), np.inf)
+        self.current_size:int = 0
+    def __len__(self) ->int:
         return self.current_size
     def clear(self):
         np.ndarray.fill( self.table, np.inf )
@@ -28,7 +28,7 @@ class LowPos:
                 self.table[insert_at+1:] = self.table[insert_at:-1]
                 self.table[insert_at] = [value, pos]
 
-    def get_table(self):
+    def get_table(self) ->np.ndarray:
         return self.table[:self.current_size]
 
     def get_pos(self):

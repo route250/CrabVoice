@@ -8,27 +8,27 @@ from CrabAI.vmp import Ev
 
 logger = getLogger(__name__)
    
-def _to_npy_str(value) -> np.ndarray:
+def _to_npy_str(value) -> np.ndarray|None:
     if value is None:
         return None
     return np.frombuffer( bytes(str(value), 'utf-8'), dtype=np.uint8)
 
-def _from_npy_str(npy: np.ndarray) -> str:
+def _from_npy_str(npy: np.ndarray) -> str|None:
     if not isinstance(npy,np.ndarray) or len(npy.shape)!=1:
         return None
     return npy.tobytes().decode('utf-8')
 
-def _to_npy_i16(value) ->np.ndarray:
+def _to_npy_i16(value) ->np.ndarray|None:
     if not isinstance(value,(int,float)):
         return None
     return np.array([value]).astype(np.int16)
 
-def _to_npy_i64(value) ->np.ndarray:
+def _to_npy_i64(value) ->np.ndarray|None:
     if not isinstance(value,(int,float)):
         return None
     return np.array([value]).astype(np.int64)
 
-def _to_npy_f32(value) ->np.ndarray:
+def _to_npy_f32(value) ->np.ndarray|None:
     if not isinstance(value,(int,float)):
         return None
     return np.array([value]).astype(np.float32)
@@ -60,19 +60,19 @@ class SttData(Ev):
     Dump:int=700
     NetErr:int=900
 
-    def __init__(self, typ:int, utc:float, start:int, end:int, sample_rate:int, raw=None, audio=None, hists=None, content:str=None, spk=None, tag:str=None, seq=0, filepath=None):
+    def __init__(self, typ:int, utc:float, start:int, end:int, sample_rate:int, raw:np.ndarray|None=None, audio:np.ndarray|None=None, hists:pd.DataFrame|None=None, content:str|None=None, spk:np.ndarray|None=None, tag:str|None=None, seq=0, filepath=None):
         super().__init__(seq,typ)
         self.utc:float = float(utc)
         self.start:int = int(start)
         self.end:int = int(end)
         self.sample_rate:int = int(sample_rate)
-        self.raw:np.ndarray = raw
-        self.audio:np.ndarray = audio
-        self.spk:np.ndarray = spk
-        self.hists:pd.DataFrame = hists
-        self.content:str = content
-        self.tag:str = tag
-        self.filepath:str = filepath
+        self.raw:np.ndarray|None = raw
+        self.audio:np.ndarray|None = audio
+        self.spk:np.ndarray|None = spk
+        self.hists:pd.DataFrame|None = hists
+        self.content:str|None = content
+        self.tag:str|None = tag
+        self.filepath:str|None = filepath
 
     @staticmethod
     def type_to_str(typ:int):
@@ -105,7 +105,7 @@ class SttData(Ev):
         pos_sec = pos_len/self.sample_rate if self.sample_rate>0 else -1
         raw_len = self.raw.shape[0] if isinstance(self.raw,np.ndarray) else -1
         audio_len = self.audio.shape[0] if isinstance(self.audio,np.ndarray) else -1
-        hists_len = self.hists.shape[0] if isinstance(self.audio,pd.DataFrame) else -1
+        hists_len = self.hists.shape[0] if isinstance(self.hists,pd.DataFrame) else -1
         err = ''
         if raw_len>=0 and pos_len != raw_len:
             err+=f' len(raw)={raw_len}'
@@ -154,7 +154,7 @@ class SttData(Ev):
         return super()[key]
 
     def save(self, out ):
-        kwargs = {
+        kwargs:dict = {
             'utc':_to_npy_i64(self.utc),
             'seq':_to_npy_i64(self.seq),
             'typ':_to_npy_i16(self.typ),

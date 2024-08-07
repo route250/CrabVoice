@@ -13,7 +13,8 @@ import pandas as pd
 import pygame
 
 sys.path.append(os.getcwd())
-from CrabAI.voice._stt.audio_to_text import SttData
+from CrabAI.vmp import ShareParam
+from CrabAI.voice.stt import SttEngine, SttData
 from stt_data_plot import SttDataTable, SttDataPlotter
 
 # SttDataを表示、再生するGUI

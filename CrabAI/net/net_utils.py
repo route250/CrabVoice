@@ -1,7 +1,7 @@
 
 import requests
 
-def find_first_responsive_host(hostname_list:list[str], port:int=None, timeout:float=1.0) ->str:
+def find_first_responsive_host(hostname_list:list[str], port:int|None=None, timeout:float=1.0) ->str|None:
     uniq:set = set()
     for sv in hostname_list:
         url = f"{sv}"

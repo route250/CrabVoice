@@ -15,7 +15,7 @@ class RollingMaxBuffer:
         self._buf[self._pos] = value
         if self._max_pos == self._pos:
             # 新規データが最大値を上書きしたので、現在の最大をスキャン
-            self._max_pos = np.nanargmax( self._buf )
+            self._max_pos = int( np.nanargmax( self._buf ) )
             self._max_value = float( self._buf[self._max_pos] )
         elif self._max_value < value:
             # 新規データが最大値を超えたので記録する

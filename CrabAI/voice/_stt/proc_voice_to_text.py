@@ -34,7 +34,7 @@ class VoiceToText(VFunction):
         self._gain = self.conf.get_text_gain()
         return
 
-    def proc(self, ev ):
+    def proc(self, ev:SttData|Ev ):
         if isinstance(ev,SttData):
             if SttData.Voice==ev.typ or SttData.PreVoice == ev.typ:
                 self.proc_voice(ev)
@@ -53,7 +53,7 @@ class VoiceToText(VFunction):
                 self.proc_output_event( SttData( SttData.Start, stt_data.utc, stt_data.start, stt_data.start, stt_data.sample_rate, seq=stt_data.seq) )
             audio = stt_data.audio
             next_typ = SttData.Text if SttData.Voice == stt_data.typ else SttData.PreText
-            if len(audio)>0:
+            if audio is not None and len(audio)>0:
                 # 音量調整
                 audio = adjust_voice_gain( audio, self._gain )
                 t0 = time.time()

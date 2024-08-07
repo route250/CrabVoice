@@ -87,7 +87,7 @@ class RingBuffer:
                 self.length -= length
                 self.pos = (self.pos+length) % self.capacity
 
-    def to_numpy(self, start=None, end=None, step=None):
+    def to_numpy(self, start:int|None=None, end:int|None=None, step:int|None=None):
 
         with self._lock:
 

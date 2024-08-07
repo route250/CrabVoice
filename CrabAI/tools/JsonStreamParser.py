@@ -1,15 +1,15 @@
 import json
 
-PRE_KEY=1
-IN_KEY=2
-AFTER_KEY=3
-PRE_VALUE=4
-IN_QSTR=5
-AFTER_VALUE=6
-IN_NUMBER=7
-IN_NULL=8
-FREE_STR=9
-END=999
+PRE_KEY:int=1
+IN_KEY:int=2
+AFTER_KEY:int=3
+PRE_VALUE:int=4
+IN_QSTR:int=5
+AFTER_VALUE:int=6
+IN_NUMBER:int=7
+IN_NULL:int=8
+FREE_STR:int=9
+END:int=999
 
 class JsonStreamParseError(ValueError):
     def __init__(self,msg,pos):
@@ -19,19 +19,19 @@ class JsonStreamParseError(ValueError):
 class JsonStreamParser:
     """ストリーミングでパースできるJSONパーサ簡易版"""
     def __init__(self):
-        self._pos=0
+        self._pos:int=0
         self._stack = []
-        self._phase=PRE_VALUE
-        self._obj=None
+        self._phase:int=PRE_VALUE
+        self._obj:dict|list|None=None
         self._key=None
         self._val=None
-        self._esc=0
-        self._ucode=""
-        self._lines=1
-        self._cols=1
+        self._esc:int=0
+        self._ucode:str=""
+        self._lines:int=1
+        self._cols:int=1
         self.done:dict = {}
 
-    def _push(self, new_obj, new_phase ):
+    def _push(self, new_obj:dict|list, new_phase:int ):
         if self._obj is None:
             self._obj = new_obj
         elif isinstance(self._obj,dict):

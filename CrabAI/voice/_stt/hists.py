@@ -40,7 +40,7 @@ class AudioFeatureBuffer:
         self.hist_var.clear()
         self.hist_mute.clear()
 
-    def to_numpy(self, start:int=None, end:int=None, step:int=None ):
+    def to_numpy(self, start:int|None=None, end:int|None=None, step:int|None=None ):
         hi = self.hist_hi.to_numpy(start,end,step)
         lo = self.hist_lo.to_numpy(start,end,step)
         color = self.hist_color.to_numpy(start,end,step)
@@ -52,7 +52,7 @@ class AudioFeatureBuffer:
         mute = self.hist_mute.to_numpy(start,end,step)
         return np.vstack( (hi,lo,color,vad,vad_ave,energy,zc,var,mute))
 
-    def to_df(self, start:int=None, end:int=None, step:int=None ):
+    def to_df(self, start:int|None=None, end:int|None=None, step:int|None=None ):
         df = pd.DataFrame({
             'hi': self.hist_hi.to_numpy(start,end,step),
             'lo': self.hist_lo.to_numpy(start,end,step),

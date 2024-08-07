@@ -80,12 +80,12 @@ class VadCounter:
         self.vad_count = 0
         self.vad_state:bool = False
         # 処理用
-        self.hists_tbl:list[bool] = [0] * self.size
+        self.hists_tbl:list[bool] = [False] * self.size
         self.hists_pos:int = 0
         self.seg = b''
         self.vad = webrtcvad.Vad()
 
-    def put_f32(self, audio:np.ndarray ) ->bool:
+    def put_f32(self, audio:np.ndarray ) ->tuple[bool,bool,bool,bool]:
         """
         float32の音声データから区切りを検出
         戻り値: start,up,dn,end
@@ -94,10 +94,10 @@ class VadCounter:
         pcm = pcm.astype(np.int16)
         return self.put_i16( pcm )
 
-    def put_i16(self, pcm:np.ndarray ) ->bool:
+    def put_i16(self, pcm:np.ndarray ) ->tuple[bool,bool,bool,bool]:
         return self.put_bytes( pcm.tobytes() )
     
-    def put_bytes(self, data:bytes ) ->list[bool]:
+    def put_bytes(self, data:bytes ) ->tuple[bool,bool,bool,bool]:
         start_state:bool = self.vad_state
         up_trigger:bool = False
         down_trigger:bool = False
