@@ -24,8 +24,8 @@ class Ev:
 
     def __init__(self, seq:int, typ, *args, **kwargs ):
         self.seq = seq
-        self.proc_no=None
-        self.num_proc=None
+        self.proc_no:int|None=None
+        self.num_proc:int|None=None
         self.typ = typ
         self.args = args
         self.kwargs = kwargs
@@ -116,7 +116,7 @@ class ShareParam:
             self._share_array = Array( 'd', 256 )
         self._share_key = self._share_array[0]
 
-    def _set_value(self, idx, value, *, notify=True ) ->float:
+    def _set_value(self, idx, value, *, notify=True ) ->float|None:
         if isinstance(value,(float,int)):
             value = float(value)
             if self._share_array[idx] != value:
@@ -279,7 +279,7 @@ class VFunction:
     def reload_share_param(self):
         return
 
-    def be_distribution(self, ev:Ev ):
+    def be_distribution(self, ev:Ev ) ->Ev|None:
         if ev is None or self.num_proc<=1:
             return None # シングルプロセスならNone
         if not ev.is_distribution():
@@ -314,7 +314,7 @@ class VFunction:
         else:
             return False
 
-    def _get_next_data(self):
+    def _get_next_data(self) ->Ev|None:
 
         dbg:bool = False # self.__class__.__name__ != "AudioToSegment"
 
@@ -333,7 +333,7 @@ class VFunction:
                 ev:Ev = self.data_in.get( timeout=0.5 )
                 if ev is None:
                     return None
-                new_ev:Ev = self.be_distribution( ev )
+                new_ev:Ev|None = self.be_distribution( ev )
                 if new_ev is not None:
                     print(f"[{self.proc_name}] Broadcast {str(new_ev)}")
                     self.data_in.put(new_ev)
@@ -374,7 +374,7 @@ class VFunction:
         while not self.req_brake:
             loop_count+=1
             try:
-                ev:Ev = self._get_next_data()
+                ev:Ev|None = self._get_next_data()
                 if ev is None:
                     if self.conf.is_updated():
                         if self.conf.get_stat_main() != 0.0:
@@ -447,7 +447,7 @@ class VFunction:
     def load(self ):
         raise NotImplementedError()
 
-    def proc(self, ev:Ev ):
+    def proc(self, ev:Ev|None ):
         raise NotImplementedError()
 
     def proc_end_of_data(self, ev:Ev ):
@@ -547,9 +547,9 @@ def main():
     q3:PQ = PQ()
     q4:PQ = PQ()
 
-    pa = VProcess( PipeA, share, q1, q2 )
-    pb = VProcess( PipeB, share, q2, q3 )
-    pc = VProcess( PipeC, share, q3, q4 )
+    pa = VProcess( PipeA, 0, 1, share, q1, q2 )
+    pb = VProcess( PipeB, 1, 1, share, q2, q3 )
+    pc = VProcess( PipeC, 2, 1, share, q3, q4 )
 
     print(f"Start")
     pa.start()
