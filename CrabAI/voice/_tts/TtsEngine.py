@@ -28,10 +28,19 @@ from CrabAI.voice.voice_state import VoiceState
 from logging import getLogger
 logger = getLogger(__name__)
 
+def _to_int( value, default:int ) -> int:
+    try:
+        val = int(value)
+        if val>0:
+            return val
+    except:
+        pass
+    return default
+
 class TtsEngine:
     EOT:str = "<|EOT|>"
     # 男性はM 女性はF
-    VoiceList = [
+    VoiceList:list[tuple[str,int,str,str]] = [
         ( "VOICEVOX:四国めたん[ノーマル]",  2, 'ja_JP', 'F' ),
         ( "VOICEVOX:四国めたん[あまあま]",  0, 'ja_JP', 'F' ),
         ( "VOICEVOX:四国めたん[ツンツン]",  6, 'ja_JP', 'F' ),
@@ -132,35 +141,36 @@ class TtsEngine:
     ]
 
     @staticmethod
-    def id_to_model( idx:int ) -> str:
+    def id_to_model( idx:int ) -> tuple[str,int,str,str]|None:
         return next((voice for voice in TtsEngine.VoiceList if voice[1] == idx), None )
 
     @staticmethod
     def id_to_name( idx:int ) -> str:
         voice = TtsEngine.id_to_model( idx )
-        name = voice[0]
+        name = voice[0] if voice else None
         return name if name else '???'
 
     @staticmethod
     def id_to_lang( idx:int ) -> str:
         voice = TtsEngine.id_to_model( idx )
-        lang = voice[2]
+        lang = voice[2] if voice else None
         return lang if lang else 'ja_JP'
 
+    @staticmethod
     def id_to_gender( idx:int ) -> str:
         voice = TtsEngine.id_to_model( idx )
-        gender = voice[3]
+        gender = voice[3] if voice else None
         return gender if gender else 'X'
 
     @staticmethod
     def load_default( conf:ShareParam ):
         pass
 
-    def __init__(self, *, speaker=-1, submit_task = None, talk_callback = None, katakana_dir='tmp/katakana' ):
+    def __init__(self, *, speaker:int=-1, submit_task = None, talk_callback = None, katakana_dir='tmp/katakana' ):
         # 並列処理用
         self.lock:Condition = Condition()
-        self._audio_future:Future = None
-        self._talk_future:Future = None
+        self._audio_future:Future|None = None
+        self._talk_future:Future|None = None
         self.wave_queue:Queue = Queue()
         self.play_queue:Queue = Queue()
         self._last_talk:float = 0
@@ -172,7 +182,7 @@ class TtsEngine:
         # 音声エンジン選択
         self.speaker = speaker
         # コールバック
-        self.executor = None
+        self.executor:ThreadPoolExecutor|None = None
         self._submit_call = submit_task # スレッドプールへの投入
         self._start_call = talk_callback # 発声開始と完了を通知する
         # pygame初期化済みフラグ
@@ -184,8 +194,8 @@ class TtsEngine:
         self._disable_openai: float = 0.0
         self._disable_voicevox: float = 0.0
         # VOICEVOXサーバURL
-        self._voicevox_url = None
-        self._voicevox_port = os.getenv('VOICEVOX_PORT','50021')
+        self._voicevox_url:str|None = None
+        self._voicevox_port = _to_int( os.getenv('VOICEVOX_PORT' ), 50021)
         self._voicevox_list = list(set([os.getenv('VOICEVOX_HOST','127.0.0.1'),'127.0.0.1','192.168.0.104','chickennanban.ddns.net','chickennanban1.ddns.net','chickennanban2.ddns.net','chickennanban3.ddns.net']))
         self._katakana_dir = katakana_dir
 
@@ -204,7 +214,7 @@ class TtsEngine:
         self.sound_error1 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t240v15 O3aa", sampling_rate=16000 ))), sample_rate=16000 )
         self.sound_error2 = audio_to_wave_bytes( np.concatenate((self.feed,mml_to_audio( "t480v15 O3aaa", sampling_rate=16000 ))), sample_rate=16000 )
 
-    def _fn_callback(self, stat:int, talk_id:int, seq:int, content:str, emotion:int, model:str):
+    def _fn_callback(self, stat:int, talk_id:int, seq:int, content:str|None, emotion:int, model:str|None):
         if self._start_call is not None:
             self._start_call( stat, talk_id, seq, content, emotion, model )
 
@@ -272,7 +282,7 @@ class TtsEngine:
         if self._submit_call is not None:
             return self._submit_call(func)
         if self.executor is None:
-            self.executor:ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
+            self.executor = ThreadPoolExecutor(max_workers=4)
         return self.executor.submit( func )
 
     def cancel(self):
@@ -286,7 +296,7 @@ class TtsEngine:
             return True
         return False
 
-    def _get_voicevox_url( self ) ->str:
+    def _get_voicevox_url( self ) ->str|None:
         if self._voicevox_url is None:
             self._voicevox_url = find_first_responsive_host(self._voicevox_list,self._voicevox_port)
         return self._voicevox_url
@@ -356,7 +366,7 @@ class TtsEngine:
         last_time:float = time.time()
         while True:
             talk_id:int = -1
-            text:str = None
+            text:str|None = None
             emotion:int = -1
             with self.lock:
                 try:
@@ -385,10 +395,10 @@ class TtsEngine:
                     self.play_queue.put( (talk_id,seq,text,emotion,audio_bytes,tts_model) )
                     with self.lock:
                         if self._talk_future is None:
-                            logger.info("play thread submit")
+                            logger.info("[TTS] play thread submit")
                             self._talk_future = self._fn_submit_task(self._th_run_talk)
                         else:
-                            logger.info("play thread exists")
+                            logger.info("[TTS] play thread running")
             except Exception as ex:
                 logger.exception(ex)
 
@@ -399,10 +409,10 @@ class TtsEngine:
         else:
             return text
         
-    def _text_to_audio_by_voicevox(self, text: str, emotion:int = 0, lang='ja') -> bytes:
+    def _text_to_audio_by_voicevox(self, text: str, emotion:int = 0, lang='ja') -> tuple[bytes|None,str|None]:
         if self._disable_voicevox>0 and (time.time()-self._disable_voicevox)<180.0:
             return None,None
-        sv_url: str = self._get_voicevox_url()
+        sv_url: str|None = self._get_voicevox_url()
         if sv_url is None:
             self._disable_voicevox = time.time()
             return None,None
@@ -446,7 +456,7 @@ class TtsEngine:
         self._disable_voicevox = time.time()
         return None,None
 
-    def _text_to_audio_by_gtts(self, text: str, emotion:int = 0) -> bytes:
+    def _text_to_audio_by_gtts(self, text: str, emotion:int = 0) -> tuple[bytes|None,str|None]:
         if self._disable_gtts>0 and (time.time()-self._disable_gtts)<180.0:
             return None,None
         voice = TtsEngine.id_to_model( self.speaker )
@@ -489,7 +499,7 @@ class TtsEngine:
     def get_client(self):
         return OpenAI()
 
-    def _text_to_audio_by_openai(self, text: str, emotion:int = 0) -> bytes:
+    def _text_to_audio_by_openai(self, text: str, emotion:int = 0) -> tuple[bytes|None,str|None]:
         if self._disable_openai>0 and (time.time()-self._disable_openai)<180.0:
             return None,None
         try:
@@ -501,7 +511,7 @@ class TtsEngine:
             client:OpenAI = self.get_client()
             response:openai._base_client.HttpxBinaryResponseContent = client.audio.speech.create(
                 model="tts-1",
-                voice=voice_model,
+                voice=voice_model, # type: ignore
                 response_format="mp3",
                 input=TtsEngine.__penpenpen(text,' ')
             )
@@ -519,11 +529,11 @@ class TtsEngine:
         text = re.sub( r'[「」・、。]+',' ',text)
         return text.strip()
 
-    def _text_to_audio( self, text1: str, emotion:int = 0 ) -> bytes:
+    def _text_to_audio( self, text1: str, emotion:int = 0 ) -> tuple[bytes|None,str|None]:
         if TtsEngine.EOT==text1:
             return self.sound_mute_out,''
-        wave: bytes = None
-        model:str = None
+        wave: bytes|None = None
+        model:str|None = None
         text:str = TtsEngine.convert_blank( text1 )
         if 0<=self.speaker and self.speaker<1000:
             wave, model = self._text_to_audio_by_voicevox( text, emotion )
@@ -545,7 +555,7 @@ class TtsEngine:
             text:str|None = None
             emotion: int = 0
             audio:bytes|None = None
-            tts_model:str = None
+            tts_model:str|None = None
             with self.lock:
                 try:
                     talk_id, seq, text, emotion, audio, tts_model = self.play_queue.get_nowait() # lockの中だからnowaitにする
@@ -576,13 +586,15 @@ class TtsEngine:
             if status == TtsEngine.TALK_FLUSH:
                 # 駄目押しの無音再生
                 logger.info(f"[TTS] play {talk_id} empty")
-                buffer_talk_end = BytesIO(self.sound_talk_end)
-                buffer_talk_end.seek(0)
+                # buffer_talk_end = BytesIO(self.sound_talk_end)
+                # buffer_talk_end.seek(0)
                 buffer_sync = BytesIO(self.sync_wave)
                 buffer_sync.seek(0)
-                pygame.mixer.music.load(buffer_talk_end)
+                # pygame.mixer.music.load(buffer_talk_end)
+                # pygame.mixer.music.play() #
+                # pygame.mixer.music.queue(buffer_sync,loops=2)
+                pygame.mixer.music.load(buffer_sync)
                 pygame.mixer.music.play() #
-                pygame.mixer.music.queue(buffer_sync,loops=2)
                 self._last_talk = time.time()
                 status = TtsEngine.TALK_END_WAIT
                 time.sleep(0.2)
@@ -602,7 +614,8 @@ class TtsEngine:
                     time.sleep(0.2)
                     continue
                 elif talk_id != self._talk_id: # cancelされた
-                    logger.info(f"[TTS] play {talk_id} {seq} cancel")
+                    logger.info(f"[TTS] play {status} {talk_id} {seq} cancel")
+                    time.sleep(0.01)
                     continue
 
             try:

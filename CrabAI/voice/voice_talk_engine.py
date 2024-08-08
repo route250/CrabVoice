@@ -1,3 +1,4 @@
+from typing import Callable
 import sys,os,traceback
 import time, datetime
 from threading import Thread, Condition
@@ -29,7 +30,7 @@ class VoiceTalkEngine(ShareParam):
         self.speaker:int = speaker
         self._share_key = self._share_array[0]
         self._status = VoiceState.ST_STOPPED
-        self._callback = None
+        self._callback:Callable|None = None
         self.text_lock:Condition = Condition()
         self.text_buf=[]
         self.text_confidence = 1.0
