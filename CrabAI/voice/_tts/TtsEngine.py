@@ -282,12 +282,18 @@ class TtsEngine:
         if self._submit_call is not None:
             return self._submit_call(func)
         if self.executor is None:
-            self.executor = ThreadPoolExecutor(max_workers=4)
+            self.executor = ThreadPoolExecutor(max_workers=4,thread_name_prefix="TTS")
         return self.executor.submit( func )
 
     def cancel(self):
         self._talk_id += 1
         self._talk_seq = 0
+
+    def shutdown(self):
+        self._start_call = None
+        self._submit_call = None
+        if self.executor is not None:
+            self.executor.shutdown(cancel_futures=True)
 
     def is_playing(self) ->bool:
         if not self.wave_queue.empty() or not self.play_queue.empty():
@@ -399,6 +405,7 @@ class TtsEngine:
                             self._talk_future = self._fn_submit_task(self._th_run_talk)
                         else:
                             logger.info("[TTS] play thread running")
+                            self.lock.notify_all()
             except Exception as ex:
                 logger.exception(ex)
 

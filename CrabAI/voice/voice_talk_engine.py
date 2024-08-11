@@ -123,16 +123,24 @@ class VoiceTalkEngine(ShareParam):
             elif stat == VoiceState.ST_TALK_EXIT:
                 logger.debug( f"[VoiceTalkEngine] talk END" )
 
-    def load(self, *, stt=True, tts=True):
-        if stt:
-            mic_list = get_mic_devices(samplerate=16000, dtype=np.float32)
-            if len(mic_list)>0:
-                src = mic_list[0]['index']
-                self.stt = SttEngine( conf=self, source=src, sample_rate=16000 )
-                self.stt.load()
-        if tts:
-            self.tts = TtsEngine( speaker=self.speaker, talk_callback=self._tts_callback)
-
+    def load(self, *, stt:bool|None=True, tts:bool|None=True):
+        if isinstance(stt,bool):
+            if stt:
+                mic_list = get_mic_devices(samplerate=16000, dtype=np.float32)
+                if len(mic_list)>0:
+                    src = mic_list[0]['index']
+                    self.stt = SttEngine( conf=self, source=src, sample_rate=16000 )
+                    self.stt.load()
+                elif self.stt is not None:
+                    self.stt.stop()
+            else:
+                self.stt.stop()
+        if isinstance(tts,bool):
+            if tts:
+                self.tts = TtsEngine( speaker=self.speaker, talk_callback=self._tts_callback)
+            else:
+                self.tts.shutdown()
+                    
     def _th_loop(self):
         try:
             self.stt.start()
