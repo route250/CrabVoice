@@ -370,45 +370,48 @@ class TtsEngine:
         """
         logger.info(f"[TTS] text_to_audio thread start")
         last_time:float = time.time()
-        while True:
-            talk_id:int = -1
-            text:str|None = None
-            emotion:int = -1
-            with self.lock:
+        try:
+            while True:
+                talk_id:int = -1
+                text:str|None = None
+                emotion:int = -1
+                with self.lock:
+                    try:
+                        talk_id, seq, text, emotion = self.wave_queue.get_nowait()
+                        last_time = time.time()
+                    except Exception as ex:
+                        if not isinstance( ex, Empty ):
+                            logger.exception(ex)
+                        talk_id=-1
+                        text = None
+                    if text is None and (time.time()-last_time)>2.0:
+                        self._audio_future = None
+                        logger.info(f"[TTS] text_to_audio thread end")
+                        return
+                if text is None:
+                    time.sleep(0.2)
+                    continue
                 try:
-                    talk_id, seq, text, emotion = self.wave_queue.get_nowait()
-                    last_time = time.time()
+                    if talk_id == self._talk_id: # cancelされてなければ
+                        self._music_wakeup()
+                        logger.debug(f"[TTS] text_to_audio {text}")
+                        # textから音声へ
+                        self._fn_callback( VoiceState.ST_TALK_CONVERT_START, talk_id, seq, text, emotion, None )
+                        audio_bytes, tts_model = self._text_to_audio( text, emotion )
+                        self._fn_callback( VoiceState.ST_TALK_CONVERT_END, talk_id, seq, text, emotion, tts_model )
+                        self.play_queue.put( (talk_id,seq,text,emotion,audio_bytes,tts_model) )
+                        with self.lock:
+                            if self._talk_future is None:
+                                logger.info("[TTS] play thread submit")
+                                self._talk_future = self._fn_submit_task(self._th_run_talk)
+                            else:
+                                logger.info("[TTS] play thread running")
+                                self.lock.notify_all()
                 except Exception as ex:
-                    if not isinstance( ex, Empty ):
-                        logger.exception(ex)
-                    talk_id=-1
-                    text = None
-                if text is None and (time.time()-last_time)>2.0:
-                    self._audio_future = None
-                    logger.info(f"[TTS] text_to_audio thread end")
-                    return
-            if text is None:
-                time.sleep(0.2)
-                continue
-            try:
-                if talk_id == self._talk_id: # cancelされてなければ
-                    self._music_wakeup()
-                    logger.debug(f"[TTS] text_to_audio {text}")
-                    # textから音声へ
-                    self._fn_callback( VoiceState.ST_TALK_CONVERT_START, talk_id, seq, text, emotion, None )
-                    audio_bytes, tts_model = self._text_to_audio( text, emotion )
-                    self._fn_callback( VoiceState.ST_TALK_CONVERT_END, talk_id, seq, text, emotion, tts_model )
-                    self.play_queue.put( (talk_id,seq,text,emotion,audio_bytes,tts_model) )
-                    with self.lock:
-                        if self._talk_future is None:
-                            logger.info("[TTS] play thread submit")
-                            self._talk_future = self._fn_submit_task(self._th_run_talk)
-                        else:
-                            logger.info("[TTS] play thread running")
-                            self.lock.notify_all()
-            except Exception as ex:
-                logger.exception(ex)
-
+                    logger.exception(ex)
+        finally:
+            logger.info("[TTS] play thread finally")
+    
     @staticmethod
     def __penpenpen( text, default=" " ) ->str:
         if text is None or text.startswith("```"):
@@ -617,7 +620,7 @@ class TtsEngine:
                 self._fn_callback( VoiceState.ST_TALK_EXIT, talk_id, -1, None, emotion, tts_model )
                 return
             else:
-                if talk_id<0 and text is None and audio and None:
+                if talk_id<0 and text is None and audio is None:
                     time.sleep(0.2)
                     continue
                 elif talk_id != self._talk_id: # cancelされた
