@@ -134,12 +134,14 @@ class VoiceTalkEngine(ShareParam):
                 elif self.stt is not None:
                     self.stt.stop()
             else:
-                self.stt.stop()
+                if self.stt is not None:
+                    self.stt.stop()
         if isinstance(tts,bool):
             if tts:
                 self.tts = TtsEngine( speaker=self.speaker, talk_callback=self._tts_callback)
             else:
-                self.tts.shutdown()
+                if self.tts is not None:
+                    self.tts.shutdown()
                     
     def _th_loop(self):
         try:
