@@ -21,7 +21,7 @@ def _convert_to_katakana_openai(word_list, *, openai_timeout=5.0, openai_max_ret
         {'role':'system', 'content':req }
     ]
     # OpenAIのモデルとクライアント設定
-    openai_llm_model = 'gpt-3.5-turbo'
+    openai_llm_model = 'gpt-4o-mini'
     client:OpenAI = OpenAI(timeout=openai_timeout,max_retries=openai_max_retries)
     # OpenAI APIを呼び出し、レスポンスを取得
     res:ChatCompletion = client.chat.completions.create(

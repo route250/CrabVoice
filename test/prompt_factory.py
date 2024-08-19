@@ -37,7 +37,7 @@ class PromptFactory:
         self.response_fmt = copy.deepcopy(response_fmt)
 
     def _LLM(self,request_text:str,json_obj=False,gpt4=False) ->str:
-        openai_llm_model = "gpt-3.5-turbo" if not gpt4 else "gpt-4-1106-preview"
+        openai_llm_model = "gpt-4o-mini" if not gpt4 else "gpt-4-turbo"
         openai_timeout=5.0
         openai_max_retries=2
         client:OpenAI = OpenAI(timeout=openai_timeout,max_retries=openai_max_retries)
@@ -481,7 +481,7 @@ def get_response_from_openai(user_input):
     # OpenAI APIの設定値
     openai_timeout = 5.0  # APIリクエストのタイムアウト時間
     openai_max_retries = 2  # リトライの最大回数
-    openai_llm_model = 'gpt-3.5-turbo'  # 使用する言語モデル
+    openai_llm_model = 'gpt-4o-mini'  # 使用する言語モデル
     openai_temperature = 0.7  # 応答の多様性を決定するパラメータ
     openai_max_tokens = 1000  # 応答の最大長
     # プロンプトを作ります

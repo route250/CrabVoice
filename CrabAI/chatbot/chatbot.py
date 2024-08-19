@@ -242,7 +242,7 @@ def main():
 
     setup_openai_api()
 
-    openai_llm_model='gpt-3.5-turbo'
+    openai_llm_model='gpt-4o-mini'
     speech:VoiceTalkEngine = VoiceTalkEngine() # speaker=2000gtts
     save_path = os.path.join('logs','audio')
     os.makedirs(save_path,exist_ok=True)
