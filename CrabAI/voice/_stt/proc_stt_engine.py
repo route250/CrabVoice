@@ -48,7 +48,7 @@ class SttEngine(ShareParam):
         SegmentToVoice.load_default( conf )
         VoiceToText.load_default( conf )
 
-    def __init__(self, source, *, conf:ShareParam=None, sample_rate:int=16000, num_vosk:int=2 ):
+    def __init__(self, source, *, conf:ShareParam|None=None, sample_rate:int=16000, num_vosk:int=2 ):
         super().__init__( conf )
         self.sample_rate:int = sample_rate if isinstance(sample_rate,(int,float)) and sample_rate>16000 else 16000
         self.started:bool = False
@@ -59,7 +59,7 @@ class SttEngine(ShareParam):
         if isinstance(source,str):
             if source.endswith('.wav'):
                 self.src = WavSource( self._share_array, data_in1, sampling_rate=self.sample_rate, source=source  )
-            elif source.endswith('.pyz'):
+            elif source.endswith('.npz'):
                 self.src = SttSource( self._share_array, data_in1, sampling_rate=self.sample_rate, source=source  )
             else:
                 raise ValueError(f'invalid source: {source}')

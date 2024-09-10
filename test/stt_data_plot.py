@@ -88,9 +88,9 @@ class SttDataPlotter(ttk.Frame):
 
         self.dir_path = None
 
-    def set_stt_data(self, stt_data: SttData):
+    def set_stt_data(self, stt_data: SttData|None):
 
-        self._stt_Data: SttData = stt_data
+        self._stt_Data: SttData|None = stt_data
         self.ax1 = None
         self.ax3 = None
         self.x_sec = None
@@ -597,6 +597,12 @@ class SttDataTable(ttk.Frame):
 
     def bind(self, fn ):
         self._ev_on_select = fn
+
+    def set_select(self,idx:int):
+        item_id = self.tree.get_children()[idx]
+        self.tree.selection_set(item_id)
+        # 明示的にイベントを発生させる
+        self.tree.event_generate("<<TreeviewSelect>>")
 
     def selection_clear(self):
         self.tree.selection_clear()

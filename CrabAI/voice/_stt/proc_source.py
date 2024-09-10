@@ -329,6 +329,7 @@ class WavSource(ThreadSourceBase):
                         wa = (start_time + audio_time) - time.time()
                         if wa>0:
                             time.sleep( wa )
+                    self._in_mute = self._mute = False
                     self._put_data( utc, pos, audio_f32 )
                     pos += len(pcm)
                 print( f"wave {audio_time:.2f}/{total_time:.2f} {pos}/{total_length}")
@@ -340,21 +341,28 @@ class SttSource(ThreadSourceBase):
 
     def load_source(self):
         try:
-            self.stt_data:SttData = SttData.load( self.source )
-            orig_sr = self.orig_sr = self.stt_data.sample_rate
-        except:
+            stt_data:SttData|None = SttData.load( self.source )
+            if stt_data is None:
+                raise ValueError(f"filename:{self.source}")
+            self.stt_data:SttData = stt_data
+            self.orig_sr:int = self.stt_data.sample_rate
+        except Exception as ex:
             logger.exception(f"filename:{self.source}")
+            raise ex
 
     def _proc_thread(self):
         try:
                 stt_data:SttData = self.stt_data
+                bz:int = stt_data.get_blocksize()
                 audio = stt_data['raw']
                 if audio is None:
                     audio = stt_data['audio']
+                mute_array = stt_data['mute']
             
                 utc:float = stt_data.utc
+                start_offset:int = stt_data.start
                 orig_sr = self.orig_sr = stt_data.sample_rate
-                segsize = input_seg_size(orig_sr)
+                segsize = input_seg_size(self.sampling_rate,orig_sr)
                 total_length = len(audio)
                 total_time = total_length/orig_sr
                 log_inverval = orig_sr * 5
@@ -363,6 +371,7 @@ class SttSource(ThreadSourceBase):
                 for pos in range( 0, total_length, segsize ):
                     if self.state != SourceBase.StStarted:
                         break
+                    mute:bool = mute_array[pos//bz]>0.0 if mute_array is not None else False
                     audio_f32 = pad_to_length( audio[pos:pos+segsize], segsize )
                     audio_time = pos/orig_sr
                     if log_next<=pos:
@@ -372,7 +381,8 @@ class SttSource(ThreadSourceBase):
                         wa = (start_time+audio_time) - time.time()
                         if wa>0.0:
                             time.sleep( wa )
-                    self._put_data( utc, pos, audio_f32 )
+                    self._in_mute = self._mute = mute
+                    self._put_data( utc, start_offset+pos, audio_f32 )
                 print( f"SttData {audio_time:.2f}/{total_time:.2f} {pos}/{total_length}")
                 self._put_end_of_data()
         except:

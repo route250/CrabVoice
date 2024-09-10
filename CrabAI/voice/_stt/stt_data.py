@@ -119,6 +119,18 @@ class SttData(Ev):
         seq = f"#{self.seq}, " if isinstance(self.seq,int) else ''
         return f"[{no}{num}{seq}{SttData.type_to_str(self.typ)}, {self.start}({st_sec:.3f}), {self.end}({ed_sec:.3f}), {pos_len}({pos_sec:.3f}), {self.content} {spk}]{err}"
 
+    def get_audio_len(self) ->int:
+        if self.audio is not None:
+            return self.audio.shape[0]
+        if self.raw is not None:
+            return self.raw.shape[0]
+        return 0
+
+    def get_blocksize(self) ->int:
+        if self.hists is not None:
+            return self.get_audio_len()//self.hists.shape[0]
+        return 0
+
     def __getitem__(self, key):
         if not isinstance(key, str):
             raise TypeError(f'Key must be a string, not {type(key).__name__}')
