@@ -22,11 +22,11 @@ class Ev:
     MuteOn:int = 1002
     MuteOff:int = 1003
 
-    def __init__(self, seq:int, typ, *args, **kwargs ):
-        self.seq = seq
+    def __init__(self, seq:int, typ:int, *args, **kwargs ):
+        self.seq:int = seq
         self.proc_no:int|None=None
         self.num_proc:int|None=None
-        self.typ = typ
+        self.typ:int = typ
         self.args = args
         self.kwargs = kwargs
 
@@ -458,6 +458,7 @@ class VFunction:
 
 class VProcess(Process):
 
+    @staticmethod
     def _dummy():
         pass
 
@@ -564,7 +565,7 @@ def main():
     for seq in range(total):
         #seg:np.ndarray = np.random.rand( seglen, dtype=np.float32 )
         seg:np.ndarray = np.full( seglen, float(seq+1), dtype=np.float32 )
-        ev = Ev(seq, Ev.Audio, seg )
+        ev = Ev(seq, Ev.StartOfData, seg )
         q1.put(ev)
     ev = Ev(seq, 0 )
     q1.put(ev)

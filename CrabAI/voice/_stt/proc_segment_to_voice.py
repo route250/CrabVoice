@@ -241,6 +241,9 @@ class SegmentToVoice(VFunction):
                     stt_data.typ = SttData.PreVoice
                 self.proc_output_event(stt_data)
                 stt_data = None
+            else:
+                stt_term = SttData( SttData.Term, stt_data.utc, stt_data.start, stt_data.end, self.sample_rate )
+                self.proc_output_event(stt_term)
         except:
             logger.exception("audio to voice")
         finally:

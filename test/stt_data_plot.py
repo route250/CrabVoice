@@ -642,13 +642,17 @@ class SttDataTable(ttk.Frame):
             self.tree.delete(item)
 
     def add(self, stt_data:SttData, file_path=None ):
-        if stt_data.typ != SttData.Text and stt_data.typ != SttData.Dump:
+        if stt_data.typ != SttData.Text and stt_data.typ != SttData.Dump and stt_data.typ != SttData.Term:
             return
         file_name, _ = os.path.splitext(os.path.basename(file_path)) if file_path is not None else None,None
         # 結果をテーブルに表示
         sec = (stt_data.end-stt_data.start)/stt_data.sample_rate
-        sig=round( max(max(stt_data.hists['hi']),abs(min(stt_data.hists['lo'])) ), 3)
-        vad=round( max(stt_data.hists['vad']), 3)
+        if stt_data.typ != SttData.Term:
+            sig=round( max(max(stt_data.hists['hi']),abs(min(stt_data.hists['lo'])) ), 3)
+            vad=round( max(stt_data.hists['vad']), 3)
+        else:
+            sig = 0.0
+            vad = 0.0
         typ = SttData.type_to_str(stt_data.typ)
         values=( file_name, stt_data.utc, typ, stt_data.start, stt_data.end, sec, sig, vad, stt_data.content)
         # 挿入位置を見つける

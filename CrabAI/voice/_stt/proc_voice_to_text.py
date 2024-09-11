@@ -25,6 +25,7 @@ class VoiceToText(VFunction):
         self.model='google'
         self.speech_state=0
         self._gain:float = None
+        self._not_empty:bool = False
         self.reload_share_param()
 
     def load(self):
@@ -38,6 +39,10 @@ class VoiceToText(VFunction):
         if isinstance(ev,SttData):
             if SttData.Voice==ev.typ or SttData.PreVoice == ev.typ:
                 self.proc_voice(ev)
+            elif ev.typ==SttData.Term:
+                if self._not_empty:
+                    self._not_empty = False
+                    self.proc_output_event(ev)
             else:
                 self.proc_output_event(ev)
         else:
@@ -73,6 +78,7 @@ class VoiceToText(VFunction):
                 stt_data.typ = next_typ
                 stt_data.content = text
                 self.proc_output_event(stt_data)
+                self._not_empty = True
         except:
             logger.exception("audio to text")
         finally:
